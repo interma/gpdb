@@ -97,7 +97,7 @@ ic_proxy_addr_on_getaddrinfo(uv_getaddrinfo_t *req,
 								 uv_strerror(ret));
 			}
 
-			memcpy(&addr->addr, iter->ai_addr, iter->ai_addrlen);
+			memcpy(&addr->sockaddr, iter->ai_addr, iter->ai_addrlen);
 			ic_proxy_addrs = lappend(ic_proxy_addrs, addr);
 			break;
 		}
@@ -225,9 +225,9 @@ ic_proxy_get_my_addr(void)
 int
 ic_proxy_addr_get_port(const ICProxyAddr *addr)
 {
-	if (addr->addr.ss_family == AF_INET)
+	if (addr->sockaddr.ss_family == AF_INET)
 		return ntohs(((struct sockaddr_in *) addr)->sin_port);
-	else if (addr->addr.ss_family == AF_INET6)
+	else if (addr->sockaddr.ss_family == AF_INET6)
 		return ntohs(((struct sockaddr_in6 *) addr)->sin6_port);
 
 	elog(WARNING,
@@ -254,8 +254,8 @@ ic_proxy_addr_get_port(const ICProxyAddr *addr)
  * error code.
  */
 int
-ic_proxy_extract_addr(const struct sockaddr *addr,
-					  char *name, size_t namelen, int *port, int *family)
+ic_proxy_extract_sockaddr(const struct sockaddr *addr,
+						  char *name, size_t namelen, int *port, int *family)
 {
 	int			ret;
 
