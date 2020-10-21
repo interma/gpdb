@@ -38,6 +38,11 @@ List	   *ic_proxy_addrs = NIL;
 static List *ic_proxy_unknown_addrs = NIL;
 
 /*
+ * My address.
+ */
+static ICProxyAddr *ic_proxy_my_addr = NULL;
+
+/*
  * Resolved one address.
  */
 static void
@@ -143,6 +148,8 @@ ic_proxy_reload_addresses(uv_loop_t *loop)
 
 		list_free(ic_proxy_unknown_addrs);
 		ic_proxy_unknown_addrs = NIL;
+
+		ic_proxy_my_addr = NULL;
 	}
 
 	/* parse the new addresses */
@@ -181,6 +188,9 @@ ic_proxy_reload_addresses(uv_loop_t *loop)
 			snprintf(addr->service, sizeof(addr->service), "%d", port);
 			ic_proxy_unknown_addrs = lappend(ic_proxy_unknown_addrs, addr);
 
+			if (dbid == GpIdentity.dbid)
+				ic_proxy_my_addr = addr;
+
 			elogif(gp_log_interconnect >= GPVARS_VERBOSITY_VERBOSE, LOG,
 						 "ic-proxy-addr: seg%d,dbid%d: parsed addr: %s:%d",
 						 content, dbid, hostname, port);
@@ -202,16 +212,8 @@ ic_proxy_reload_addresses(uv_loop_t *loop)
 const ICProxyAddr *
 ic_proxy_get_my_addr(void)
 {
-	ListCell   *cell;
-	int			dbid = GpIdentity.dbid;
-
-	foreach(cell, ic_proxy_addrs)
-	{
-		ICProxyAddr *addr = lfirst(cell);
-
-		if (addr->dbid == dbid)
-			return addr;
-	}
+	if (ic_proxy_my_addr)
+		return ic_proxy_my_addr;
 
 	elogif(gp_log_interconnect >= GPVARS_VERBOSITY_VERBOSE, LOG, "ic-proxy: cannot get my addr");
 	return NULL;
