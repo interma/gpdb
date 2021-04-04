@@ -881,6 +881,7 @@ toast_insert_or_update_generic(Relation rel, void *newtup, void *oldtup,
 	{
 		/* Since reloptions for AO table is not permitted, so using TOAST_TUPLE_TARGET */
 		hoff = sizeof(MemTupleData);
+		hoff = MAXALIGN(hoff);
 		maxDataLen = TOAST_TUPLE_TARGET - hoff;
 	}
 
