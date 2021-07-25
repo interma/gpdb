@@ -2232,6 +2232,7 @@ format_sockaddr(struct sockaddr *sa, char *buf, int bufsize)
 	else if (sa->sa_family == AF_INET6)
 	{
 		char		remote_port[32];
+		remote_port[0] = '\0';
 
 		if (bufsize > 10)
 		{
