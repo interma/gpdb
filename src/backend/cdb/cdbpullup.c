@@ -23,7 +23,6 @@
 #include "nodes/nodeFuncs.h"	/* exprType() and exprTypmod() */
 #include "parser/parsetree.h"	/* get_tle_by_resno() */
 #include "utils/lsyscache.h"	/* get_opfamily_member() */
-#include "cdb/cdbhash.h"        /* cdb_eqop_in_hash_opfamily() */
 
 #include "cdb/cdbpullup.h"		/* me */
 
@@ -306,20 +305,10 @@ cdbpullup_findEclassInTargetList(EquivalenceClass *eclass, List *targetlist,
 		Expr	   *key = (Expr *) em->em_expr;
 		ListCell *lc_tle;
 
-		if (OidIsValid(hashOpFamily))
-		{
-			PG_TRY();
-			{
-				if (!cdb_eqop_in_hash_opfamily(hashOpFamily, em->em_datatype))
-					continue;
-			}
-			PG_CATCH();
-			{
-				/* not found */
-				continue;
-			}
-			PG_END_TRY();
-		}
+		if (OidIsValid(hashOpFamily) &&
+			!get_opfamily_member(hashOpFamily, em->em_datatype, em->em_datatype,
+								 HTEqualStrategyNumber))
+			continue;
 
 		/* A constant is OK regardless of the target list */
 		if (em->em_is_const)

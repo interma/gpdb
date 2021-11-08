@@ -503,26 +503,6 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 						targetPolicy = createHashPartitionedPolicy(policykeys,
 																   policyopclasses,
 																   GP_POLICY_DEFAULT_NUMSEGMENTS());
-
-						if (query->parentStmtType == PARENTSTMTTYPE_COPY)
-						{
-							/* TODO
-							if (glob_cstate->on_segment && glob_cstate->rel == NULL)
-							{
-								ereport(WARNING
-										// (errcode(ERRCODE_SUCCESSFUL_COMPLETION),
-										 errmsg("Results are redistributed between segments, please note.")
-										);
-							}
-							*/
-
-							/* redistributed results in 'copy (query) on segment',
-							 * so need to give user a warning.
-							 */
-							ereport(NOTICE,
-									 (errmsg("Results are redistributed between segments, please note."))
-									);
-						}
 					}
 
 					/* If we deduced the policy from the query, give a NOTICE */
