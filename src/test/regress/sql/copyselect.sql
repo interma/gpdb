@@ -94,3 +94,27 @@ select 0\; copy test3 from stdin\; copy test3 from stdin\; select 1; -- 1
 \.
 select * from test3;
 drop table test3;
+
+-- copy (query) to ... on segment
+-- https://github.com/greenplum-db/gpdb/issues/12700
+
+-- a partition table distributed by a varchar distkey
+CREATE TABLE part_table (high varchar(32), id int, code char(1))
+DISTRIBUTED BY (high)
+PARTITION BY RANGE (code)
+( PARTITION p1 start('a') end ('c'),
+  PARTITION p2 start('c') end ('e'),
+  PARTITION p3 start('e') end ('g'),
+  DEFAULT PARTITION others
+);
+insert into part_table select g::varchar(32), g, chr( (ascii('a') + g%10) ) from generate_series(1,1000) as g;
+
+-- execute copy (query) on segment
+\set QUIET off
+COPY (select gp_segment_id, high from part_table where code < 'c' and gp_segment_id=0) TO '/tmp/copy_out_varchar_<SEGID>.csv' ON SEGMENT csv delimiter '|' quote '"';
+COPY (select gp_segment_id, high from part_table where code < 'c' and gp_segment_id=1) TO '/tmp/copy_out_varchar_<SEGID>.csv' ON SEGMENT csv delimiter '|' quote '"';
+COPY (select gp_segment_id, high from part_table where code < 'c' and gp_segment_id=2) TO '/tmp/copy_out_varchar_<SEGID>.csv' ON SEGMENT csv delimiter '|' quote '"';
+\set QUIET on
+-- rows should be same as copy above
+select gp_segment_id,count(*) from part_table where code < 'c' group by gp_segment_id;
+

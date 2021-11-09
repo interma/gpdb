@@ -153,3 +153,37 @@ select * from test3;
 (2 rows)
 
 drop table test3;
+-- copy (query) to ... on segment
+-- https://github.com/greenplum-db/gpdb/issues/12700
+-- a partition table distributed by a varchar distkey
+CREATE TABLE part_table (high varchar(32), id int, code char(1))
+DISTRIBUTED BY (high)
+PARTITION BY RANGE (code)
+( PARTITION p1 start('a') end ('c'),
+  PARTITION p2 start('c') end ('e'),
+  PARTITION p3 start('e') end ('g'),
+  DEFAULT PARTITION others
+);
+NOTICE:  CREATE TABLE will create partition "part_table_1_prt_others" for table "part_table"
+NOTICE:  CREATE TABLE will create partition "part_table_1_prt_p1" for table "part_table"
+NOTICE:  CREATE TABLE will create partition "part_table_1_prt_p2" for table "part_table"
+NOTICE:  CREATE TABLE will create partition "part_table_1_prt_p3" for table "part_table"
+insert into part_table select g::varchar(32), g, chr( (ascii('a') + g%10) ) from generate_series(1,1000) as g;
+-- execute copy (query) on segment
+\set QUIET off
+COPY (select gp_segment_id, high from part_table where code < 'c' and gp_segment_id=0) TO '/tmp/copy_out_varchar_<SEGID>.csv' ON SEGMENT csv delimiter '|' quote '"';
+COPY 63
+COPY (select gp_segment_id, high from part_table where code < 'c' and gp_segment_id=1) TO '/tmp/copy_out_varchar_<SEGID>.csv' ON SEGMENT csv delimiter '|' quote '"';
+COPY 64
+COPY (select gp_segment_id, high from part_table where code < 'c' and gp_segment_id=2) TO '/tmp/copy_out_varchar_<SEGID>.csv' ON SEGMENT csv delimiter '|' quote '"';
+COPY 73
+\set QUIET on
+-- rows should be same as copy above
+select gp_segment_id,count(*) from part_table where code < 'c' group by gp_segment_id;
+ gp_segment_id | count 
+---------------+-------
+             1 |    64
+             2 |    73
+             0 |    63
+(3 rows)
+
