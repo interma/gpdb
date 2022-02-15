@@ -121,3 +121,11 @@ where
 	and (stat.schema_name || '.' ||stat.table_name not in (select table_nm_onl_act from tbls_w_onl_actl_data))
 	or (stat.schema_name || '.' ||stat.table_name in (select table_nm_onl_act from tbls_w_onl_actl_data));
 
+-- Test the scenario which already opened many fds
+create extension if not exists gp_inject_fault;
+\! mkdir -p /tmp/_gpdb_fault_inject_tmp_dir/
+
+select gp_inject_fault('inject_many_fds_for_shareinputscan', 'skip', dbid) from gp_segment_configuration where role = 'p' and content = 0;
+-- borrow the test query in gp_aggregates
+select case when ten < 5 then ten else ten * 2 end, count(distinct two), count(distinct four) from public.tenk1 group by 1;
+select gp_inject_fault('inject_many_fds_for_shareinputscan', 'reset', dbid) from gp_segment_configuration where role = 'p' and content = 0;
