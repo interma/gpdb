@@ -641,7 +641,10 @@ shareinput_reader_waitready(void *ctxt, int share_id, PlanGenerator planGen)
 	 * Using FAULT_INJECTOR here to test whether it works normally in this
 	 * scenario (already opened many fds).
 	 **/
-	const int num = 70000; // > 65536
+	// we should use 70000(>65536) to test here, but the test env (docker)'s open files
+	// is not very big, so only using a smaller value instead.
+	// const int num = 70000;
+	const int num = 40000;
 	int tmp_fds[num];
 	memset(tmp_fds, 0, sizeof(tmp_fds));
 	char tmpfile_prefix[] = "/tmp/_gpdb_fault_inject_tmp_dir/"; // need create the dir first
