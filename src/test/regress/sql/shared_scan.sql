@@ -135,3 +135,5 @@ select gp_inject_fault('inject_many_fds_for_shareinputscan', 'skip', dbid) from 
 -- borrow the test query in gp_aggregates
 select case when ten < 5 then ten else ten * 2 end, count(distinct two), count(distinct four) from tenk1 group by 1;
 select gp_inject_fault('inject_many_fds_for_shareinputscan', 'reset', dbid) from gp_segment_configuration where role = 'p' and content = 0;
+
+\! rm -rf /tmp/_gpdb_fault_inject_tmp_dir/
