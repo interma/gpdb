@@ -284,4 +284,3 @@ select gp_inject_fault('inject_many_fds_for_shareinputscan', 'reset', dbid) from
 (1 row)
 
 \! rm -rf /tmp/_gpdb_fault_inject_tmp_dir/
-
