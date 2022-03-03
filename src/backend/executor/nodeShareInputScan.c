@@ -932,9 +932,15 @@ shareinput_reader_waitready(shareinput_Xslice_reference *ref)
 	 * calls this works.
 	 * GPDB_12_MERGE_FIXME: check if that still happens after the v12 merge.
 	 */
-	ConditionVariablePrepareToSleep(&state->ready_done_cv);
-	while (!state->ready)
+	for (;;)
 	{
+		int ready = 0;
+		LWLockAcquire(ShareInputScanLock, LW_SHARED);
+		ready = state->ready;
+		LWLockRelease(ShareInputScanLock);
+		if (ready)
+			break;
+
 		/* GPDB_12_MERGE_FIXME: Create a new WaitEventIPC member for this? */
 		ConditionVariableSleep(&state->ready_done_cv, WAIT_EVENT_SHAREINPUT_SCAN);
 	}
@@ -957,9 +963,10 @@ shareinput_writer_notifyready(shareinput_Xslice_reference *ref)
 {
 	shareinput_Xslice_state *state = ref->xslice_state;
 
-	/* we're the only writer, so no need to acquire the lock. */
 	Assert(!state->ready);
+	LWLockAcquire(ShareInputScanLock, LW_EXCLUSIVE);
 	state->ready = true;
+	LWLockRelease(ShareInputScanLock);
 
 	ConditionVariableBroadcast(&state->ready_done_cv);
 
@@ -1007,7 +1014,11 @@ shareinput_writer_waitdone(shareinput_Xslice_reference *ref, int nconsumers)
 {
 	shareinput_Xslice_state *state = ref->xslice_state;
 
-	if (!state->ready)
+	int ready = 0;
+	LWLockAcquire(ShareInputScanLock, LW_SHARED);
+	ready = state->ready;
+	LWLockRelease(ShareInputScanLock);
+	if (!ready)
 		elog(ERROR, "shareinput_writer_waitdone() called without creating the tuplestore");
 
 	ConditionVariablePrepareToSleep(&state->ready_done_cv);
