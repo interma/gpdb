@@ -62,6 +62,7 @@
 #include "executor/executor.h"
 #include "executor/nodeShareInputScan.h"
 #include "miscadmin.h"
+#include "pgstat.h"
 #include "storage/condition_variable.h"
 #include "storage/lwlock.h"
 #include "storage/shmem.h"
@@ -935,7 +936,7 @@ shareinput_reader_waitready(shareinput_Xslice_reference *ref)
 	while (!state->ready)
 	{
 		/* GPDB_12_MERGE_FIXME: Create a new WaitEventIPC member for this? */
-		ConditionVariableSleep(&state->ready_done_cv, 0);
+		ConditionVariableSleep(&state->ready_done_cv, WAIT_EVENT_SHAREINPUT_SCAN);
 	}
 	ConditionVariableCancelSleep();
 
@@ -1024,7 +1025,7 @@ shareinput_writer_waitdone(shareinput_Xslice_reference *ref, int nconsumers)
 				 ref->share_id, currentSliceId, nconsumers - ndone, nconsumers);
 
 			/* GPDB_12_MERGE_FIXME: Create a new WaitEventIPC member for this? */
-			ConditionVariableSleep(&state->ready_done_cv, 0);
+			ConditionVariableSleep(&state->ready_done_cv, WAIT_EVENT_SHAREINPUT_SCAN);
 
 			continue;
 		}
