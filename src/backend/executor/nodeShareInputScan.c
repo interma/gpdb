@@ -711,7 +711,7 @@ ShareInputShmemInit(void)
 	{
 		HASHCTL		info;
 
-		// GPDB_12_MERGE_FIXME: would be nicer to store this hash in the DSM segment
+		// GPDB_12_MERGE_FIXME: would be nicer to store this hash in the DSM segment or DSA
 		info.keysize = sizeof(shareinput_tag);
 		info.entrysize = sizeof(shareinput_Xslice_state);
 
@@ -919,18 +919,6 @@ shareinput_reader_waitready(shareinput_Xslice_reference *ref)
 	/*
 	 * Wait until the the producer sets 'ready' to true. The producer will
 	 * use the condition variable to wake us up.
-	 *
-	 * No need to hold ShareInputScanLock while we examine state->ready. It's
-	 * a boolean so it's either true or false.
-	 *
-	 * XXX: The ConditionVariablePrepareToSleep() is supposedly not needed, but
-	 * I saw mysterious hangs without it. Maybe we're missing a fix from
-	 * upstream? Or perhaps the condition variable machinery loses track of
-	 * which conditin variable we're prepared on, because the slots in shared
-	 * memory containing the condition variable are recycled. Not sure what
-	 * exactly is going on, but with the PrepareToSleep() and CancelSleep()
-	 * calls this works.
-	 * GPDB_12_MERGE_FIXME: check if that still happens after the v12 merge.
 	 */
 	for (;;)
 	{
@@ -941,7 +929,6 @@ shareinput_reader_waitready(shareinput_Xslice_reference *ref)
 		if (ready)
 			break;
 
-		/* GPDB_12_MERGE_FIXME: Create a new WaitEventIPC member for this? */
 		ConditionVariableSleep(&state->ready_done_cv, WAIT_EVENT_SHAREINPUT_SCAN);
 	}
 	ConditionVariableCancelSleep();
@@ -1035,7 +1022,6 @@ shareinput_writer_waitdone(shareinput_Xslice_reference *ref, int nconsumers)
 			elog(DEBUG1, "SISC WRITER (shareid=%d, slice=%d): waiting for DONE message from %d / %d readers",
 				 ref->share_id, currentSliceId, nconsumers - ndone, nconsumers);
 
-			/* GPDB_12_MERGE_FIXME: Create a new WaitEventIPC member for this? */
 			ConditionVariableSleep(&state->ready_done_cv, WAIT_EVENT_SHAREINPUT_SCAN);
 
 			continue;
