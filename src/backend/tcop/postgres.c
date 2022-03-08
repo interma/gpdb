@@ -5520,7 +5520,9 @@ PostgresMain(int argc, char *argv[],
 									   serializedQueryDispatchDesc, serializedQueryDispatchDesclen);
 
 					SetUserIdAndSecContext(GetOuterUserId(), 0);
-
+#ifdef FAULT_INJECTOR
+					SIMPLE_FAULT_INJECTOR("qe_exec_finished");
+#endif
 					send_ready_for_query = true;
 				}
 				break;
