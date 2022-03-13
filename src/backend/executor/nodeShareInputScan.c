@@ -952,8 +952,13 @@ shareinput_writer_notifyready(shareinput_Xslice_reference *ref)
 
 	Assert(!state->ready);
 	LWLockAcquire(ShareInputScanLock, LW_EXCLUSIVE);
+	// XXX: using atomics function instead of lock here
 	state->ready = true;
 	LWLockRelease(ShareInputScanLock);
+
+#ifdef FAULT_INJECTOR
+	SIMPLE_FAULT_INJECTOR("shareinput_writer_notifyready");
+#endif
 
 	ConditionVariableBroadcast(&state->ready_done_cv);
 

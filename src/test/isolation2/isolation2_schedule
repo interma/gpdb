@@ -293,3 +293,5 @@ test: check_gxid
 # test if GUC is synchronized from the QD to QEs.
 test: sync_guc
 
+test: wait_event
+
