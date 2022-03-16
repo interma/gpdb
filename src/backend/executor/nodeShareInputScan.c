@@ -931,7 +931,7 @@ shareinput_reader_waitready(shareinput_Xslice_reference *ref)
 	 * calls this works.
 	 * GPDB_12_MERGE_FIXME: check if that still happens after the v12 merge.
 	 */
-	ConditionVariablePrepareToSleep(&state->ready_done_cv);
+	// ConditionVariablePrepareToSleep(&state->ready_done_cv);
 	while (!state->ready)
 	{
 		/* GPDB_12_MERGE_FIXME: Create a new WaitEventIPC member for this? */
