@@ -70,6 +70,7 @@
 #include "utils/memutils.h"
 #include "utils/resowner.h"
 #include "utils/tuplestore.h"
+#include "port/atomics.h"
 
 /*
  * In a cross-slice ShareinputScan, the producer and consumer processes
@@ -101,8 +102,8 @@ typedef struct shareinput_Xslice_state
 	shareinput_tag tag;			/* hash key */
 
 	int			refcount;		/* reference count of this entry */
-	bool		ready;			/* is the input fully materialized and ready to be read? */
-	int			ndone;			/* # of consumers that have finished the scan */
+	pg_atomic_uint32	ready;	/* is the input fully materialized and ready to be read? */
+	pg_atomic_uint32	ndone;	/* # of consumers that have finished the scan */
 
 	/*
 	 * ready_done_cv is used for signaling when the scan becomes "ready", and
@@ -819,8 +820,8 @@ get_shareinput_reference(int share_id)
 		}
 
 		xslice_state->refcount = 0;
-		xslice_state->ready = false;
-		xslice_state->ndone = 0;
+		pg_atomic_init_u32(&xslice_state->ready, 0); // false
+		pg_atomic_init_u32(&xslice_state->ndone, 0);
 
 		ConditionVariableInit(&xslice_state->ready_done_cv);
 	}
@@ -922,10 +923,7 @@ shareinput_reader_waitready(shareinput_Xslice_reference *ref)
 	 */
 	for (;;)
 	{
-		int ready = 0;
-		LWLockAcquire(ShareInputScanLock, LW_SHARED);
-		ready = state->ready;
-		LWLockRelease(ShareInputScanLock);
+		int ready = pg_atomic_read_u32(&state->ready);
 		if (ready)
 			break;
 
@@ -950,11 +948,8 @@ shareinput_writer_notifyready(shareinput_Xslice_reference *ref)
 {
 	shareinput_Xslice_state *state = ref->xslice_state;
 
-	Assert(!state->ready);
-	LWLockAcquire(ShareInputScanLock, LW_EXCLUSIVE);
-	// XXX: using atomics function instead of lock here
-	state->ready = true;
-	LWLockRelease(ShareInputScanLock);
+	Assert(!pg_atomic_read_u32(&state->ready));
+	pg_atomic_write_u32(&state->ready, 1);
 
 #ifdef FAULT_INJECTOR
 	SIMPLE_FAULT_INJECTOR("shareinput_writer_notifyready");
@@ -978,12 +973,7 @@ static void
 shareinput_reader_notifydone(shareinput_Xslice_reference *ref, int nconsumers)
 {
 	shareinput_Xslice_state *state = ref->xslice_state;
-	int		ndone;
-
-	LWLockAcquire(ShareInputScanLock, LW_EXCLUSIVE);
-	state->ndone++;
-	ndone = state->ndone;
-	LWLockRelease(ShareInputScanLock);
+	int ndone =pg_atomic_add_fetch_u32(&state->ndone, 1);
 
 	/* If we were the last consumer, wake up the producer. */
 	if (ndone >= nconsumers)
@@ -1006,22 +996,14 @@ shareinput_writer_waitdone(shareinput_Xslice_reference *ref, int nconsumers)
 {
 	shareinput_Xslice_state *state = ref->xslice_state;
 
-	int ready = 0;
-	LWLockAcquire(ShareInputScanLock, LW_SHARED);
-	ready = state->ready;
-	LWLockRelease(ShareInputScanLock);
+	int ready = pg_atomic_read_u32(&state->ready);
 	if (!ready)
 		elog(ERROR, "shareinput_writer_waitdone() called without creating the tuplestore");
 
 	ConditionVariablePrepareToSleep(&state->ready_done_cv);
 	for (;;)
 	{
-		int			ndone;
-
-		LWLockAcquire(ShareInputScanLock, LW_SHARED);
-		ndone = state->ndone;
-		LWLockRelease(ShareInputScanLock);
-
+		int			ndone = pg_atomic_read_u32(&state->ndone);
 		if (ndone < nconsumers)
 		{
 			elog(DEBUG1, "SISC WRITER (shareid=%d, slice=%d): waiting for DONE message from %d / %d readers",
