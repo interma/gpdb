@@ -29,6 +29,7 @@
 #include "parser/parsetree.h"
 #include "utils/faultinjector.h"
 #include "utils/lsyscache.h"
+#include "utils/syscache.h"
 #include "utils/selfuncs.h"
 
 #include "catalog/pg_proc.h"
@@ -2793,7 +2794,41 @@ create_functionscan_path(PlannerInfo *root, RelOptInfo *rel,
 		}
 	}
 	else
+	{
+		foreach (lc, rte->functions)
+		{
+			RangeTblFunction *rtfunc = (RangeTblFunction *) lfirst(lc);
+
+			if (rtfunc->funcexpr && IsA(rtfunc->funcexpr, FuncExpr))
+			{
+				HeapTuple		proctup;
+				Form_pg_proc	procform;
+				FuncExpr		*funcexpr = (FuncExpr *) rtfunc->funcexpr;
+
+				Oid funcid = funcexpr->funcid;
+				proctup = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcid));
+				if (!HeapTupleIsValid(proctup))
+					elog(ERROR, "cache lookup failed for function %u", funcid);
+				procform = (Form_pg_proc) GETSTRUCT(proctup);
+				const char *proname = NameStr(procform->proname);;
+				char this_exec_location = func_exec_location(funcid);
+
+				if (GpIdentity.segindex == MASTER_CONTENT_ID &&
+					this_exec_location == PROEXECLOCATION_ALL_SEGMENTS)
+				{
+					/*
+					 * function should run on segment, but it runs on entrydb QE (master)
+					 * some functions may get error results in this scenario
+					 */
+					elog(NOTICE, "the function: %s(%d) runs on entrydb QE", proname, funcid);
+					// TODO forbid gp_tablespace_segment_location here
+				}
+				ReleaseSysCache(proctup);
+			}
+		}
+
 		CdbPathLocus_MakeEntry(&pathnode->locus);
+	}
 
 	pathnode->motionHazard = false;
 
