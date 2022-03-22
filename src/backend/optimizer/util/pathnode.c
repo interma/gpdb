@@ -2657,6 +2657,26 @@ create_subqueryscan_path(PlannerInfo *root, RelOptInfo *rel,
 	return pathnode;
 }
 
+static bool
+function_not_run_entrydb(const char *proname, Oid funcid)
+{
+	// check by oid
+	switch (funcid)
+	{
+		// XXX: add other func id here
+		default:
+		;
+	}
+
+	if (!strcmp(proname, "gp_tablespace_segment_location"))
+		return true;
+	else if (!strcmp(proname, "gp_switch_wal_on_all_segments"))
+		return true;
+
+	// check by name
+	return false;
+}
+
 /*
  * create_functionscan_path
  *	  Creates a path corresponding to a sequential scan of a function,
@@ -2795,6 +2815,8 @@ create_functionscan_path(PlannerInfo *root, RelOptInfo *rel,
 	}
 	else
 	{
+		// Gp_role == GP_ROLE_EXECUTE
+
 		foreach (lc, rte->functions)
 		{
 			RangeTblFunction *rtfunc = (RangeTblFunction *) lfirst(lc);
@@ -2817,11 +2839,14 @@ create_functionscan_path(PlannerInfo *root, RelOptInfo *rel,
 					this_exec_location == PROEXECLOCATION_ALL_SEGMENTS)
 				{
 					/*
-					 * function should run on segment, but it runs on entrydb QE (master)
-					 * some functions may get error results in this scenario
+					 * Function should run on segment.
+					 * But if runs on entrydb QE (master), it may get error results.
+					 * Give a notice here and warning some function in a list
 					 */
 					elog(NOTICE, "the function: %s(%d) runs on entrydb QE", proname, funcid);
-					// TODO forbid gp_tablespace_segment_location here
+					if (function_not_run_entrydb(proname, funcid))
+						ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								errmsg("This query is not currently supported by GPDB.")));
 				}
 				ReleaseSysCache(proctup);
 			}
