@@ -923,6 +923,10 @@ shareinput_reader_waitready(shareinput_Xslice_reference *ref)
 	 */
 	for (;;)
 	{
+		/*
+		 * set state->ready via pg_atomic_exchange_u32() in shareinput_writer_notifyready()
+		 * it acts as a memory barrier, so always get the latest value here
+		 */
 		int ready = pg_atomic_read_u32(&state->ready);
 		if (ready)
 			break;
@@ -948,8 +952,8 @@ shareinput_writer_notifyready(shareinput_Xslice_reference *ref)
 {
 	shareinput_Xslice_state *state = ref->xslice_state;
 
-	Assert(!pg_atomic_read_u32(&state->ready));
-	pg_atomic_write_u32(&state->ready, 1);
+	uint32 old_ready = pg_atomic_exchange_u32(&state->ready, 1);
+	Assert(old_ready == 0);
 
 #ifdef FAULT_INJECTOR
 	SIMPLE_FAULT_INJECTOR("shareinput_writer_notifyready");
@@ -973,7 +977,7 @@ static void
 shareinput_reader_notifydone(shareinput_Xslice_reference *ref, int nconsumers)
 {
 	shareinput_Xslice_state *state = ref->xslice_state;
-	int ndone =pg_atomic_add_fetch_u32(&state->ndone, 1);
+	int ndone = pg_atomic_add_fetch_u32(&state->ndone, 1);
 
 	/* If we were the last consumer, wake up the producer. */
 	if (ndone >= nconsumers)
@@ -1003,7 +1007,11 @@ shareinput_writer_waitdone(shareinput_Xslice_reference *ref, int nconsumers)
 	ConditionVariablePrepareToSleep(&state->ready_done_cv);
 	for (;;)
 	{
-		int			ndone = pg_atomic_read_u32(&state->ndone);
+		/*
+		 * set state->ndone via pg_atomic_add_fetch_u32() in shareinput_reader_notifydone()
+		 * it acts as a memory barrier, so always get the latest value here
+		 */
+		int	ndone = pg_atomic_read_u32(&state->ndone);
 		if (ndone < nconsumers)
 		{
 			elog(DEBUG1, "SISC WRITER (shareid=%d, slice=%d): waiting for DONE message from %d / %d readers",
