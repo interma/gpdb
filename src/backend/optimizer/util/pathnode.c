@@ -2657,23 +2657,23 @@ create_subqueryscan_path(PlannerInfo *root, RelOptInfo *rel,
 	return pathnode;
 }
 
+/**
+ * list of function which not allowed on entrydb
+ */
 static bool
 function_not_run_entrydb(const char *proname, Oid funcid)
 {
-	// check by oid
+	// check by oid (if it has a fixed oid)
 	switch (funcid)
 	{
-		// XXX: add other func id here
 		default:
 		;
 	}
 
+	// check by func name
 	if (!strcmp(proname, "gp_tablespace_segment_location"))
 		return true;
-	else if (!strcmp(proname, "gp_switch_wal_on_all_segments"))
-		return true;
 
-	// check by name
 	return false;
 }
 
@@ -2823,15 +2823,14 @@ create_functionscan_path(PlannerInfo *root, RelOptInfo *rel,
 
 			if (rtfunc->funcexpr && IsA(rtfunc->funcexpr, FuncExpr))
 			{
-				HeapTuple		proctup;
-				Form_pg_proc	procform;
-				FuncExpr		*funcexpr = (FuncExpr *) rtfunc->funcexpr;
-
+				FuncExpr *funcexpr = (FuncExpr *) rtfunc->funcexpr;
 				Oid funcid = funcexpr->funcid;
-				proctup = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcid));
+
+				HeapTuple proctup = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcid));
 				if (!HeapTupleIsValid(proctup))
 					elog(ERROR, "cache lookup failed for function %u", funcid);
-				procform = (Form_pg_proc) GETSTRUCT(proctup);
+
+				Form_pg_proc procform = (Form_pg_proc) GETSTRUCT(proctup);
 				const char *proname = NameStr(procform->proname);;
 				char this_exec_location = func_exec_location(funcid);
 
@@ -2841,9 +2840,9 @@ create_functionscan_path(PlannerInfo *root, RelOptInfo *rel,
 					/*
 					 * Function should run on segment.
 					 * But if runs on entrydb QE (master), it may get error results.
-					 * Give a notice here and warning some function in a list
+					 * Give a notice here, and warning if it's in the forbidden list.
 					 */
-					elog(NOTICE, "the function: %s(%d) runs on entrydb QE", proname, funcid);
+					elog(NOTICE, "function %s should run on segment, but it runs on entrydb QE.", proname);
 					if (function_not_run_entrydb(proname, funcid))
 						ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 								errmsg("This query is not currently supported by GPDB.")));
