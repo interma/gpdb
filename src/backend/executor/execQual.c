@@ -42,6 +42,8 @@
 #include "access/tupconvert.h"
 #include "catalog/objectaccess.h"
 #include "catalog/pg_type.h"
+#include "catalog/pg_proc.h"
+#include "catalog/pg_namespace.h"
 #include "cdb/cdbpartition.h"
 #include "cdb/cdbhash.h"
 #include "cdb/cdbvars.h"
@@ -65,6 +67,7 @@
 #include "utils/memutils.h"
 #include "utils/typcache.h"
 #include "utils/xml.h"
+#include "utils/syscache.h"
 
 
 /* static function decls */
@@ -1437,6 +1440,41 @@ GetAttributeByName(HeapTupleHeader tuple, const char *attname, bool *isNull)
 	return result;
 }
 
+/**
+ * list of function which not allowed on entrydb
+ */
+static bool
+function_not_run_entrydb(Oid foid)
+{
+	bool retvalue = false;
+	/* check by oid (if it has a fixed oid) */
+	switch (foid)
+	{
+		default:
+		;
+	}
+
+	char exec_location = func_exec_location(foid);
+	if (exec_location == PROEXECLOCATION_ALL_SEGMENTS)
+	{
+		HeapTuple proctup = SearchSysCache1(PROCOID, ObjectIdGetDatum(foid));
+		if (!HeapTupleIsValid(proctup))
+			elog(ERROR, "cache lookup failed for function %u", foid);
+		Form_pg_proc procform = (Form_pg_proc) GETSTRUCT(proctup);
+		if (procform->pronamespace == PG_CATALOG_NAMESPACE)
+		{
+			const char *proname = NameStr(procform->proname);;
+
+			/* check by func name */
+			if (!strcmp(proname, "gp_tablespace_segment_location"))
+				retvalue = true;
+		}
+		ReleaseSysCache(proctup);
+	}
+
+	return retvalue;
+}
+
 /*
  * init_fcache - initialize a FuncExprState node during first use
  */
@@ -1451,6 +1489,15 @@ init_fcache(Oid foid, Oid input_collation, FuncExprState *fcache,
 	if (aclresult != ACLCHECK_OK)
 		aclcheck_error(aclresult, ACL_KIND_PROC, get_func_name(foid));
 	InvokeFunctionExecuteHook(foid);
+
+	/* prevent some function from running in entrydb QE */
+	if (Gp_role == GP_ROLE_EXECUTE && GpIdentity.segindex == MASTER_CONTENT_ID)
+	{
+		if (function_not_run_entrydb(foid))
+			ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					errmsg("This query is not currently supported by GPDB."),
+					errdetail("function %s should not run on entrydb QE", get_func_name(foid))));
+	}
 
 	/*
 	 * Safety check on nargs.  Under normal circumstances this should never

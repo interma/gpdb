@@ -29,7 +29,6 @@
 #include "parser/parsetree.h"
 #include "utils/faultinjector.h"
 #include "utils/lsyscache.h"
-#include "utils/syscache.h"
 #include "utils/selfuncs.h"
 
 #include "catalog/pg_proc.h"
@@ -2657,26 +2656,6 @@ create_subqueryscan_path(PlannerInfo *root, RelOptInfo *rel,
 	return pathnode;
 }
 
-/**
- * list of function which not allowed on entrydb
- */
-static bool
-function_not_run_entrydb(const char *proname, Oid funcid)
-{
-	// check by oid (if it has a fixed oid)
-	switch (funcid)
-	{
-		default:
-		;
-	}
-
-	// check by func name
-	if (!strcmp(proname, "gp_tablespace_segment_location"))
-		return true;
-
-	return false;
-}
-
 /*
  * create_functionscan_path
  *	  Creates a path corresponding to a sequential scan of a function,
@@ -2815,42 +2794,6 @@ create_functionscan_path(PlannerInfo *root, RelOptInfo *rel,
 	}
 	else
 	{
-		// Gp_role == GP_ROLE_EXECUTE
-
-		foreach (lc, rte->functions)
-		{
-			RangeTblFunction *rtfunc = (RangeTblFunction *) lfirst(lc);
-
-			if (rtfunc->funcexpr && IsA(rtfunc->funcexpr, FuncExpr))
-			{
-				FuncExpr *funcexpr = (FuncExpr *) rtfunc->funcexpr;
-				Oid funcid = funcexpr->funcid;
-
-				HeapTuple proctup = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcid));
-				if (!HeapTupleIsValid(proctup))
-					elog(ERROR, "cache lookup failed for function %u", funcid);
-
-				Form_pg_proc procform = (Form_pg_proc) GETSTRUCT(proctup);
-				const char *proname = NameStr(procform->proname);;
-				char this_exec_location = func_exec_location(funcid);
-
-				if (GpIdentity.segindex == MASTER_CONTENT_ID &&
-					this_exec_location == PROEXECLOCATION_ALL_SEGMENTS)
-				{
-					/*
-					 * Function should run on segment.
-					 * But if runs on entrydb QE (master), it may get error results.
-					 * Give a notice here, and warning if it's in the forbidden list.
-					 */
-					elog(NOTICE, "function %s should run on segment, but it runs on entrydb QE.", proname);
-					if (function_not_run_entrydb(proname, funcid))
-						ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								errmsg("This query is not currently supported by GPDB.")));
-				}
-				ReleaseSysCache(proctup);
-			}
-		}
-
 		CdbPathLocus_MakeEntry(&pathnode->locus);
 	}
 
