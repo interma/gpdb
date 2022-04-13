@@ -1442,9 +1442,12 @@ GetAttributeByName(HeapTupleHeader tuple, const char *attname, bool *isNull)
 
 /**
  * List of function which not allowed on entrydb:
- * Thet are peculiar in that they do their own dispatching.
+ * They are peculiar in that they do their own dispatching.
  * So they do not work on entrydb since we do not support dispatching
  * from entry-db currently.
+ *
+ * Checked by oid first (better performance), if it has a fixed oid.
+ * Otherwise checked by its name.
  */
 static bool
 function_not_run_entrydb(Oid foid)
@@ -1484,6 +1487,12 @@ function_not_run_entrydb(Oid foid)
 	if (retvalue)
 		return retvalue;
 
+	/*
+	 * check by func name
+	 *
+	 * So far, all of them are PROEXECLOCATION_ALL_SEGMENTS,
+	 * check exec_location first can boost a little performance
+	 */
 	char exec_location = func_exec_location(foid);
 	if (exec_location == PROEXECLOCATION_ALL_SEGMENTS)
 	{
@@ -1495,7 +1504,6 @@ function_not_run_entrydb(Oid foid)
 		{
 			const char *proname = NameStr(procform->proname);;
 
-			/* check by func name */
 			if (!strcmp(proname, "gp_tablespace_segment_location"))
 				retvalue = true;
 		}

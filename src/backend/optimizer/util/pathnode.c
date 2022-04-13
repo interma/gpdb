@@ -2793,9 +2793,7 @@ create_functionscan_path(PlannerInfo *root, RelOptInfo *rel,
 		}
 	}
 	else
-	{
 		CdbPathLocus_MakeEntry(&pathnode->locus);
-	}
 
 	pathnode->motionHazard = false;
 
