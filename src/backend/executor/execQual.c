@@ -1440,75 +1440,48 @@ GetAttributeByName(HeapTupleHeader tuple, const char *attname, bool *isNull)
 	return result;
 }
 
-/**
+/*
  * List of function which not allowed on entrydb:
  * They are peculiar in that they do their own dispatching.
  * So they do not work on entrydb since we do not support dispatching
  * from entry-db currently.
  *
  * Checked by oid first (better performance), if it has a fixed oid.
- * Otherwise checked by its name.
+ * Otherwise checked by its name: bacause these functions are defined in
+ * auxiliary sql file (e.g. gp_tablespace_segment_location), not like catalog
+ * functions, they don't have fixed oid.
  */
 static bool
 function_not_run_entrydb(Oid foid)
 {
-	bool retvalue = false;
 	/* check by oid (if it has a fixed oid) */
 	switch (foid)
 	{
 		case 2332: /* pg_relation_size */
-			retvalue = true;
-			break;
 		case 2997: /* pg_table_size */
-			retvalue = true;
-			break;
 		case 2998: /* pg_indexes_size */
-			retvalue = true;
-			break;
 		case 2286: /* pg_total_relation_size */
-			retvalue = true;
-			break;
 		case 2324: /* pg_database_size_oid */
-			retvalue = true;
-			break;
 		case 2168: /* pg_database_size_name */
-			retvalue = true;
-			break;
 		case 2322: /* pg_tablespace_size_oid */
-			retvalue = true;
-			break;
 		case 2323: /* pg_tablespace_size_name */
-			retvalue = true;
-			break;
-		default:
-			;
+			return true;
 	}
 
-	if (retvalue)
-		return retvalue;
-
-	/*
-	 * check by func name
-	 *
-	 * So far, all of them are PROEXECLOCATION_ALL_SEGMENTS,
-	 * check exec_location first can boost a little performance
-	 */
-	char exec_location = func_exec_location(foid);
-	if (exec_location == PROEXECLOCATION_ALL_SEGMENTS)
+	/* check by func name */
+	bool retvalue = false;
+	HeapTuple proctup = SearchSysCache1(PROCOID, ObjectIdGetDatum(foid));
+	if (!HeapTupleIsValid(proctup))
+		elog(ERROR, "cache lookup failed for function %u", foid);
+	Form_pg_proc procform = (Form_pg_proc) GETSTRUCT(proctup);
+	if (procform->pronamespace == PG_CATALOG_NAMESPACE)
 	{
-		HeapTuple proctup = SearchSysCache1(PROCOID, ObjectIdGetDatum(foid));
-		if (!HeapTupleIsValid(proctup))
-			elog(ERROR, "cache lookup failed for function %u", foid);
-		Form_pg_proc procform = (Form_pg_proc) GETSTRUCT(proctup);
-		if (procform->pronamespace == PG_CATALOG_NAMESPACE)
-		{
-			const char *proname = NameStr(procform->proname);;
+		const char *proname = NameStr(procform->proname);;
 
-			if (!strcmp(proname, "gp_tablespace_segment_location"))
-				retvalue = true;
-		}
-		ReleaseSysCache(proctup);
+		if (!strcmp(proname, "gp_tablespace_segment_location"))
+			retvalue = true;
 	}
+	ReleaseSysCache(proctup);
 
 	return retvalue;
 }
