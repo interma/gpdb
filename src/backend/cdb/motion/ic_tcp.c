@@ -2578,12 +2578,16 @@ RecvTupleChunkFromAnyTCP(ChunkTransportState *transportStates,
 		 */
 		if (Gp_role == GP_ROLE_DISPATCH)
 		{
-			waitFd = cdbdisp_getWaitSocketFd(transportStates->estate->dispatcherState);
-			if (waitFd != PGINVALID_SOCKET)
+			int *waitFds = NULL;
+			int fds_len = cdbdisp_getWaitSocketFd(transportStates->estate->dispatcherState, &waitFds);
+			if (fds_len > 0)
 			{
+				// XXX: select all later
+				waitFd = waitFds[0];
 				MPP_FD_SET(waitFd, &rset);
 				if (waitFd > nfds)
 					nfds = waitFd;
+				pfree(waitFds);
 			}
 		}
 

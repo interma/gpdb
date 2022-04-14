@@ -452,11 +452,11 @@ cdbdisp_checkForCancel(CdbDispatcherState *ds)
  * periodically, to process results from the other QEs.
  */
 int
-cdbdisp_getWaitSocketFd(CdbDispatcherState *ds)
+cdbdisp_getWaitSocketFd(CdbDispatcherState *ds, int **fds)
 {
 	if (pDispatchFuncs == NULL || pDispatchFuncs->getWaitSocketFd == NULL)
 		return -1;
-	return (pDispatchFuncs->getWaitSocketFd) (ds);
+	return (pDispatchFuncs->getWaitSocketFd) (ds, fds);
 }
 
 dispatcher_handle_t *

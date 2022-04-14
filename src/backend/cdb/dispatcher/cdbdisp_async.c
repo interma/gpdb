@@ -114,7 +114,7 @@ static void cdbdisp_dispatchToGang_async(struct CdbDispatcherState *ds,
 static void	cdbdisp_waitDispatchFinish_async(struct CdbDispatcherState *ds);
 
 static bool	cdbdisp_checkForCancel_async(struct CdbDispatcherState *ds);
-static int cdbdisp_getWaitSocketFd_async(struct CdbDispatcherState *ds);
+static int cdbdisp_getWaitSocketFd_async(struct CdbDispatcherState *ds, int **fds);
 
 DispatcherInternalFuncs DispatcherAsyncFuncs =
 {
@@ -167,10 +167,10 @@ cdbdisp_checkForCancel_async(struct CdbDispatcherState *ds)
 }
 
 /*
- * Return a FD to wait for, after dispatching.
+ * Return all FDs to wait for, after dispatching.
  */
 static int
-cdbdisp_getWaitSocketFd_async(struct CdbDispatcherState *ds)
+cdbdisp_getWaitSocketFd_async(struct CdbDispatcherState *ds, int **fds)
 {
 	CdbDispatchCmdAsync *pParms = (CdbDispatchCmdAsync *) ds->dispatchParams;
 	int			i;
@@ -178,7 +178,10 @@ cdbdisp_getWaitSocketFd_async(struct CdbDispatcherState *ds)
 	Assert(ds);
 
 	if (proc_exit_inprogress)
-		return PGINVALID_SOCKET;
+		return 0;
+
+	int fds_len = 0;
+	*fds = (int *)palloc(pParms->dispatchCount * sizeof(int));
 
 	/*
 	 * This should match the logic in cdbdisp_checkForCancel_async(). In
@@ -202,10 +205,10 @@ cdbdisp_getWaitSocketFd_async(struct CdbDispatcherState *ds)
 
 		Assert(!cdbconn_isBadConnection(segdbDesc));
 
-		return PQsocket(segdbDesc->conn);
+		(*fds)[fds_len++] = PQsocket(segdbDesc->conn);
 	}
 
-	return PGINVALID_SOCKET;
+	return fds_len;
 }
 
 /*

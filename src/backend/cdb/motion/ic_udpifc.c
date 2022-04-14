@@ -3789,6 +3789,12 @@ receiveChunksUDPIFC(ChunkTransportState *pTransportStates, ChunkTransportStateEn
 		ResetLatch(&ic_control_info.latch);
 		pthread_mutex_unlock(&ic_control_info.lock);
 
+		if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
+		{
+			elog(DEBUG5, "waiting (timed) on route %d %s", rx_control_info.mainWaitingState.waitingRoute,
+				 (rx_control_info.mainWaitingState.waitingRoute == ANY_ROUTE ? "(any route)" : ""));
+		}
+
 		/*
 		 * Wait for data to become ready.
 		 *
@@ -3804,23 +3810,30 @@ receiveChunksUDPIFC(ChunkTransportState *pTransportStates, ChunkTransportStateEn
 		 * flexible "wait event" API for the latches, so once we merge with
 		 * that, we could improve this.
 		 */
-		int			wakeEvents = WL_LATCH_SET | WL_TIMEOUT | WL_POSTMASTER_DEATH;
-		int			waitFd = PGINVALID_SOCKET;
+
+		/* init waitset */
+		int nevent = 2;
+		int nFds = 0;
+		int *waitFds = NULL;
 
 		if (Gp_role == GP_ROLE_DISPATCH)
-			waitFd = cdbdisp_getWaitSocketFd(pTransportStates->estate->dispatcherState);
-		if (waitFd != PGINVALID_SOCKET)
-			wakeEvents |= WL_SOCKET_READABLE;
-
-		if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
 		{
-			elog(DEBUG5, "waiting (timed) on route %d %s", rx_control_info.mainWaitingState.waitingRoute,
-				 (rx_control_info.mainWaitingState.waitingRoute == ANY_ROUTE ? "(any route)" : ""));
+			/* get all wait socks */
+			nFds = cdbdisp_getWaitSocketFd(pTransportStates->estate->dispatcherState, &waitFds);
+			nevent += nFds;
 		}
-		(void) WaitLatchOrSocket(&ic_control_info.latch,
-								 wakeEvents, waitFd,
-								 MAIN_THREAD_COND_TIMEOUT_MS,
-								 WAIT_EVENT_INTERCONNECT);
+
+		WaitEventSet *waitset = CreateWaitEventSet(CurrentMemoryContext, nevent);
+		AddWaitEventToSet(waitset, WL_LATCH_SET, PGINVALID_SOCKET, &ic_control_info.latch, NULL);
+		AddWaitEventToSet(waitset, WL_POSTMASTER_DEATH, PGINVALID_SOCKET, NULL, NULL);
+
+		for (int i = 0; i < nFds; i++)
+		{
+			AddWaitEventToSet(waitset, WL_SOCKET_READABLE, waitFds[i], NULL, NULL);
+		}
+
+		WaitEvent revent;
+		int rc = WaitEventSetWait(waitset, MAIN_THREAD_COND_TIMEOUT_MS, &revent, 1, WAIT_EVENT_INTERCONNECT);
 
 		/* check the potential errors in rx thread. */
 		checkRxThreadError();
@@ -3828,8 +3841,15 @@ receiveChunksUDPIFC(ChunkTransportState *pTransportStates, ChunkTransportStateEn
 		/* do not check interrupts when holding the lock */
 		ML_CHECK_FOR_INTERRUPTS(pTransportStates->teardownActive);
 
-		/* check to see if the dispatcher should cancel */
-		if (Gp_role == GP_ROLE_DISPATCH)
+		FreeWaitEventSet(waitset);
+		if (waitFds != NULL)
+			pfree(waitFds);
+
+		/* check to see if the dispatcher should cancel
+		 *
+		 * rc == 0 means timeout, so no event happened
+		 */
+		if (rc != 0 && Gp_role == GP_ROLE_DISPATCH)
 		{
 			checkForCancelFromQD(pTransportStates);
 		}
