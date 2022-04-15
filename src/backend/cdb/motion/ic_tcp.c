@@ -2576,10 +2576,10 @@ RecvTupleChunkFromAnyTCP(ChunkTransportState *transportStates,
 		 * request from QEs.
 		 */
 		int nwaitfds = 0;
+		int *waitFds = NULL;
 		if (Gp_role == GP_ROLE_DISPATCH)
 		{
-			int *waitFds = NULL;
-			int nwaitfds = cdbdisp_getWaitSocketFd(transportStates->estate->dispatcherState, &waitFds);
+			nwaitfds = cdbdisp_getWaitSocketFd(transportStates->estate->dispatcherState, &waitFds);
 			for (i = 0; i < nwaitfds; i++)
 			{
 				MPP_FD_SET(waitFds[i], &rset);
@@ -2588,8 +2588,6 @@ RecvTupleChunkFromAnyTCP(ChunkTransportState *transportStates,
 					nfds = waitFds[i];
 			}
 
-			if (waitFds)
-				pfree(waitFds);
 		}
 
 		n = select(nfds + 1, (fd_set *) &rset, NULL, NULL, &timeout);
@@ -2604,10 +2602,21 @@ RecvTupleChunkFromAnyTCP(ChunkTransportState *transportStates,
 		}
 		else if (n > 0 && nwaitfds > 0)
 		{
+			bool need_check = false;
+			for (i = 0; i < nwaitfds; i++)
+				if (MPP_FD_ISSET(waitFds[i], &rset))
+				{
+					need_check = true;
+					n--;
+				}
+
 			/* handle events on dispatch connection */
-			checkForCancelFromQD(transportStates);
-			n--;
+			if (need_check)
+				checkForCancelFromQD(transportStates);
 		}
+
+		if (waitFds)
+			pfree(waitFds);
 
 #ifdef AMS_VERBOSE_LOGGING
 		elog(DEBUG5, "RecvTupleChunkFromAny() select() returned %d ready sockets", n);
