@@ -2521,7 +2521,6 @@ RecvTupleChunkFromAnyTCP(ChunkTransportState *transportStates,
 				i,
 				index;
 	bool		skipSelect = false;
-	int			waitFd = PGINVALID_SOCKET;
 
 #ifdef AMS_VERBOSE_LOGGING
 	elog(DEBUG5, "RecvTupleChunkFromAny(motNodeId=%d)", motNodeID);
@@ -2572,23 +2571,25 @@ RecvTupleChunkFromAnyTCP(ChunkTransportState *transportStates,
 		if (skipSelect)
 			break;
 
-		/* 
+		/*
 		 * Also monitor the events on dispatch fds, eg, errors or sequence
 		 * request from QEs.
 		 */
+		int nwaitfds = 0;
 		if (Gp_role == GP_ROLE_DISPATCH)
 		{
 			int *waitFds = NULL;
-			int fds_len = cdbdisp_getWaitSocketFd(transportStates->estate->dispatcherState, &waitFds);
-			if (fds_len > 0)
+			int nwaitfds = cdbdisp_getWaitSocketFd(transportStates->estate->dispatcherState, &waitFds);
+			for (i = 0; i < nwaitfds; i++)
 			{
-				// XXX: select all later
-				waitFd = waitFds[0];
-				MPP_FD_SET(waitFd, &rset);
-				if (waitFd > nfds)
-					nfds = waitFd;
-				pfree(waitFds);
+				MPP_FD_SET(waitFds[i], &rset);
+				/* record the max fd number for select() later */
+				if (waitFds[i] > nfds)
+					nfds = waitFds[i];
 			}
+
+			if (waitFds)
+				pfree(waitFds);
 		}
 
 		n = select(nfds + 1, (fd_set *) &rset, NULL, NULL, &timeout);
@@ -2601,7 +2602,7 @@ RecvTupleChunkFromAnyTCP(ChunkTransportState *transportStates,
 					 errmsg("interconnect error receiving an incoming packet"),
 					 errdetail("%s: %m", "select")));
 		}
-		else if (n > 0 && waitFd != PGINVALID_SOCKET && MPP_FD_ISSET(waitFd, &rset))
+		else if (n > 0 && nwaitfds > 0)
 		{
 			/* handle events on dispatch connection */
 			checkForCancelFromQD(transportStates);

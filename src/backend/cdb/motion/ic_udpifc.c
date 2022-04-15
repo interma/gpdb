@@ -3798,27 +3798,23 @@ receiveChunksUDPIFC(ChunkTransportState *pTransportStates, ChunkTransportStateEn
 		/*
 		 * Wait for data to become ready.
 		 *
-		 * In the QD, also wake up immediately if one of the QEs report an
+		 * In the QD, also wake up immediately if any QE reports an
 		 * error through the main QD-QE libpq connection. For that, ask
 		 * the dispatcher for a file descriptor to wait on for that.
-		 *
-		 * GPDB_12_MERGE_FIXME:
-		 * XXX: We currently only get a single FD to wait on. That catches
-		 * the common case that *all* the QEs report the same error more or
-		 * less at the same time. WaitLatchOrSocket doesn't allow waiting for
-		 * more than one socket at a time. PostgreSQL 9.6 introduces a more
-		 * flexible "wait event" API for the latches, so once we merge with
-		 * that, we could improve this.
 		 */
 
-		/* init waitset */
-		int nevent = 2;
+		/*
+		 * init WaitEventSet:
+		 *  - nFds and waitFds: wait sock fd array, event may happens on them
+		 *	- nevent = waited fd number + 2 (latch and postmaster)
+		 */
 		int nFds = 0;
 		int *waitFds = NULL;
+		int nevent = 2;
 
 		if (Gp_role == GP_ROLE_DISPATCH)
 		{
-			/* get all wait socks */
+			/* get all wait sock fds */
 			nFds = cdbdisp_getWaitSocketFd(pTransportStates->estate->dispatcherState, &waitFds);
 			nevent += nFds;
 		}
@@ -3832,6 +3828,7 @@ receiveChunksUDPIFC(ChunkTransportState *pTransportStates, ChunkTransportStateEn
 			AddWaitEventToSet(waitset, WL_SOCKET_READABLE, waitFds[i], NULL, NULL);
 		}
 
+		/* get one event is ok, becase it will check all events later */
 		WaitEvent revent;
 		int rc = WaitEventSetWait(waitset, MAIN_THREAD_COND_TIMEOUT_MS, &revent, 1, WAIT_EVENT_INTERCONNECT);
 
@@ -3845,9 +3842,9 @@ receiveChunksUDPIFC(ChunkTransportState *pTransportStates, ChunkTransportStateEn
 		if (waitFds != NULL)
 			pfree(waitFds);
 
-		/* check to see if the dispatcher should cancel
-		 *
-		 * rc == 0 means timeout, so no event happened
+		/*
+		 * check to see if the dispatcher should cancel
+		 * note: rc == 0 means timeout, so no event happened
 		 */
 		if (rc != 0 && Gp_role == GP_ROLE_DISPATCH)
 		{

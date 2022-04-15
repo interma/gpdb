@@ -168,6 +168,11 @@ cdbdisp_checkForCancel_async(struct CdbDispatcherState *ds)
 
 /*
  * Return all FDs to wait for, after dispatching.
+ *
+ * fds is a fd array (as an output param): it will be palloced in
+ * the function, and contains all wait fds. (caller need to pfree it)
+ *
+ * return value is the length of fds
  */
 static int
 cdbdisp_getWaitSocketFd_async(struct CdbDispatcherState *ds, int **fds)
@@ -180,7 +185,7 @@ cdbdisp_getWaitSocketFd_async(struct CdbDispatcherState *ds, int **fds)
 	if (proc_exit_inprogress)
 		return 0;
 
-	int fds_len = 0;
+	int			fds_len = 0;
 	*fds = (int *)palloc(pParms->dispatchCount * sizeof(int));
 
 	/*

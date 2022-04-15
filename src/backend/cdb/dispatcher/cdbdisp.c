@@ -438,18 +438,19 @@ cdbdisp_checkForCancel(CdbDispatcherState *ds)
 }
 
 /*
- * Return a file descriptor to wait for events from the QEs after dispatching
- * a query.
+ * Return all file descriptors to wait for events from the QEs after
+ * dispatching a query.
+ *
+ * fds is a fd array (as an output param):
+ * it will be palloced in pDispatchFuncs->getWaitSocketFd(), and contains
+ * all wait fds. (caller need to pfree it)
+ *
+ * return value is the length of fds
  *
  * This is intended for use with cdbdisp_checkForCancel(). First call
- * cdbdisp_getWaitSocketFd(), and wait on that socket to become readable
+ * cdbdisp_getWaitSocketFd(), and wait on that sockets to become readable
  * e.g. with select() or poll(). When it becomes readable, call
  * cdbdisp_checkForCancel() to process the incoming data, and repeat.
- *
- * XXX: This returns only one fd, but we might be waiting for results from
- * multiple QEs. In that case, this returns arbitrarily one of them. You
- * should still have a timeout, and call cdbdisp_checkForCancel()
- * periodically, to process results from the other QEs.
  */
 int
 cdbdisp_getWaitSocketFd(CdbDispatcherState *ds, int **fds)
