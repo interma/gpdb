@@ -26,8 +26,10 @@ create extension if not exists gp_inject_fault;
 
 select gp_inject_fault('make_dispatch_result_error', 'reset', dbid) from gp_segment_configuration where role = 'p' and content = -1;
 
--- Case for WaitEvent related logic
+--
+-- Test case for the WaitEvent of dispatch
 -- The specific event will be watched in pg_stat_activity
+--
 
 create table test_waitevent(i int);
 insert into test_waitevent select generate_series(1,1000);
@@ -57,9 +59,6 @@ insert into test_waitevent select generate_series(1,1000);
 --
 -- Test case for the WaitEvent of ShareInputScan
 --
-
-create table test_waitevent(i int);
-insert into test_waitevent select generate_series(1,1000);
 
 1: set optimizer = off;
 1: set gp_cte_sharing to on;
