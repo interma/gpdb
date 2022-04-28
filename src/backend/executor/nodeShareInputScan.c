@@ -712,7 +712,7 @@ ShareInputShmemInit(void)
 	{
 		HASHCTL		info;
 
-		// GPDB_12_MERGE_FIXME: would be nicer to store this hash in the DSM segment or DSA
+		/* GPDB_12_MERGE_FIXME: would be nicer to store this hash in the DSM segment or DSA */
 		info.keysize = sizeof(shareinput_tag);
 		info.entrysize = sizeof(shareinput_Xslice_state);
 
@@ -820,7 +820,7 @@ get_shareinput_reference(int share_id)
 		}
 
 		xslice_state->refcount = 0;
-		pg_atomic_init_u32(&xslice_state->ready, 0); // false
+		pg_atomic_init_u32(&xslice_state->ready, 0);
 		pg_atomic_init_u32(&xslice_state->ndone, 0);
 
 		ConditionVariableInit(&xslice_state->ready_done_cv);
