@@ -132,16 +132,17 @@ ABORT
 
 -- Case for cdbCopyEndInternal
 -- Provide some data to copy in
-insert into t_12703 select * from generate_series(1, 10)i;
+4: insert into t_12703 select * from generate_series(1, 10)i;
 INSERT 10
-copy t_12703 to '/tmp/t_12703';
+4: copy t_12703 to '/tmp/t_12703';
 COPY 10
 -- make copy in statement hang at the entry point of cdbCopyEndInternal
-select gp_inject_fault('cdb_copy_end_internal_start', 'suspend', dbid) from gp_segment_configuration where role = 'p' and content = -1;
+4: select gp_inject_fault('cdb_copy_end_internal_start', 'suspend', dbid) from gp_segment_configuration where role = 'p' and content = -1;
  gp_inject_fault 
 -----------------
  Success:        
 (1 row)
+4q: ... <quitting>
 1&: copy t_12703 from '/tmp/t_12703';  <waiting ...>
 select gp_wait_until_triggered_fault('cdb_copy_end_internal_start', 1, dbid) from gp_segment_configuration where role = 'p' and content = -1;
  gp_wait_until_triggered_fault 

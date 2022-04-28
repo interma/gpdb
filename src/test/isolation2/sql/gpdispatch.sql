@@ -76,10 +76,11 @@ insert into test_waitevent select generate_series(1,1000);
 
 -- Case for cdbCopyEndInternal
 -- Provide some data to copy in
-insert into t_12703 select * from generate_series(1, 10)i;
-copy t_12703 to '/tmp/t_12703';
+4: insert into t_12703 select * from generate_series(1, 10)i;
+4: copy t_12703 to '/tmp/t_12703';
 -- make copy in statement hang at the entry point of cdbCopyEndInternal
-select gp_inject_fault('cdb_copy_end_internal_start', 'suspend', dbid) from gp_segment_configuration where role = 'p' and content = -1;
+4: select gp_inject_fault('cdb_copy_end_internal_start', 'suspend', dbid) from gp_segment_configuration where role = 'p' and content = -1;
+4q:
 1&: copy t_12703 from '/tmp/t_12703';
 select gp_wait_until_triggered_fault('cdb_copy_end_internal_start', 1, dbid) from gp_segment_configuration where role = 'p' and content = -1;
 -- make Gang connection is BAD
