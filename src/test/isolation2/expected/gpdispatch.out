@@ -51,8 +51,6 @@ create table test_waitevent(i int);
 CREATE
 insert into test_waitevent select generate_series(1,1000);
 INSERT 1000
-create extension if not exists gp_inject_fault;
-CREATE
 
 1: set optimizer = off;
 SET
