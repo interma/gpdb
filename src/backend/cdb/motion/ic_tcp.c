@@ -2514,13 +2514,15 @@ RecvTupleChunkFromAnyTCP(ChunkTransportState *transportStates,
 						 int16 *srcRoute)
 {
 	ChunkTransportStateEntry *pEntry = NULL;
-	MotionConn *conn;
 	TupleChunkListItem tcItem;
+	MotionConn 	*conn;
 	mpp_fd_set	rset;
 	int			n,
 				i,
 				index;
 	bool		skipSelect = false;
+	int 		nwaitfds = 0;
+	int 		*waitFds = NULL;
 
 #ifdef AMS_VERBOSE_LOGGING
 	elog(DEBUG5, "RecvTupleChunkFromAny(motNodeId=%d)", motNodeID);
@@ -2575,21 +2577,22 @@ RecvTupleChunkFromAnyTCP(ChunkTransportState *transportStates,
 		 * Also monitor the events on dispatch fds, eg, errors or sequence
 		 * request from QEs.
 		 */
-		int nwaitfds = 0;
-		int *waitFds = NULL;
+		nwaitfds = 0;
 		if (Gp_role == GP_ROLE_DISPATCH)
 		{
-			nwaitfds = cdbdisp_getWaitSocketFd(transportStates->estate->dispatcherState, &waitFds);
-			for (i = 0; i < nwaitfds; i++)
-			{
-				MPP_FD_SET(waitFds[i], &rset);
-				/* record the max fd number for select() later */
-				if (waitFds[i] > nfds)
-					nfds = waitFds[i];
-			}
+			waitFds = cdbdisp_getWaitSocketFds(transportStates->estate->dispatcherState, &nwaitfds);
+			if (waitFds != NULL)
+				for (i = 0; i < nwaitfds; i++)
+				{
+					MPP_FD_SET(waitFds[i], &rset);
+					/* record the max fd number for select() later */
+					if (waitFds[i] > nfds)
+						nfds = waitFds[i];
+				}
 
 		}
 
+		// XXX: should use WaitEventSetWait() instead of select()
 		n = select(nfds + 1, (fd_set *) &rset, NULL, NULL, &timeout);
 		if (n < 0)
 		{

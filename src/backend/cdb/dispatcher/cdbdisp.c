@@ -441,23 +441,23 @@ cdbdisp_checkForCancel(CdbDispatcherState *ds)
  * Return all file descriptors to wait for events from the QEs after
  * dispatching a query.
  *
- * fds is a fd array (as an output param):
- * it will be palloced in pDispatchFuncs->getWaitSocketFd(), and contains
- * all wait fds. (caller need to pfree it)
+ * nsocks is the returned socket fds number (as an output param):
  *
- * return value is the length of fds
+ * Return value is the array of socket fds.
+ * It will be palloced in pDispatchFuncs->getWaitSocketFd(), and contains
+ * all waiting socket fds. (Note: caller need to pfree it)
  *
  * This is intended for use with cdbdisp_checkForCancel(). First call
- * cdbdisp_getWaitSocketFd(), and wait on that sockets to become readable
+ * cdbdisp_getWaitSocketFds(), and wait on that sockets to become readable
  * e.g. with select() or poll(). When it becomes readable, call
  * cdbdisp_checkForCancel() to process the incoming data, and repeat.
  */
-int
-cdbdisp_getWaitSocketFd(CdbDispatcherState *ds, int **fds)
+int *
+cdbdisp_getWaitSocketFds(CdbDispatcherState *ds, int *nsocks)
 {
-	if (pDispatchFuncs == NULL || pDispatchFuncs->getWaitSocketFd == NULL)
-		return -1;
-	return (pDispatchFuncs->getWaitSocketFd) (ds, fds);
+	if (pDispatchFuncs == NULL || pDispatchFuncs->getWaitSocketFds == NULL)
+		return NULL;
+	return (pDispatchFuncs->getWaitSocketFds) (ds, nsocks);
 }
 
 dispatcher_handle_t *
