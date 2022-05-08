@@ -116,14 +116,10 @@ create_gang_retry:
 	retry = false;
 	gang_waitset = CreateWaitEventSet(CurrentMemoryContext, size);
 
-	/*
-	 * allocate memory within perGangContext and will be freed automatically
-	 * when gang is destroyed
-	 */
 	pollingStatus = palloc(sizeof(PostgresPollingStatusType) * size);
 	connStatusDone = palloc(sizeof(bool) * size);
-	addedPosition = palloc(sizeof(int) * size);
-	revents = palloc(sizeof(WaitEvent) * size);
+	addedPosition = palloc(sizeof(int) * size); /* the event index in waitset */
+	revents = palloc(sizeof(WaitEvent) * size); /* returned events */
 
 	PG_TRY();
 	{
@@ -134,6 +130,7 @@ create_gang_retry:
 			char	   *options = NULL;
 			char	   *diff_options = NULL;
 
+			addedPosition[i] = -1;
 			/*
 			 * Create the connection requests.	If we find a segment without a
 			 * valid segdb we error out.  Also, if this segdb is invalid, we
@@ -182,9 +179,10 @@ create_gang_retry:
 			 * PQconnectStart(), we must act as if the PQconnectPoll() had
 			 * returned PGRES_POLLING_WRITING
 			 */
+			int fd = PQsocket(segdbDesc->conn);
 			pollingStatus[i] = PGRES_POLLING_WRITING;
-
-			addedPosition[i] = -1;
+			addedPosition[i] = AddWaitEventToSet(
+				gang_waitset, WL_SOCKET_WRITEABLE, fd, NULL, (void *)(long)i); /* "i" as the event's userdata */
 		}
 
 		/*
@@ -199,15 +197,18 @@ create_gang_retry:
 			int			nready;
 
 			poll_timeout = getPollTimeout(&startTS);
+			if (poll_timeout == 0)
+				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+								errmsg("failed to acquire resources on one or more segments"),
+								errdetail("timeout expired\n (%s)", segdbDesc->whoami)));
 
 			for (i = 0; i < size; i++)
 			{
 				segdbDesc = newGangDefinition->db_descriptors[i];
 				int fd = PQsocket(segdbDesc->conn);
 				int pos = addedPosition[i];
-				/* "i" as the event's userdata */
-				long ev_userdata = i;
-				elog(DEBUG2, "event pollingStatus, i:%d fd:%d conn-status:%d polling-status:%d",
+
+				ELOG_DISPATCHER_DEBUG("event pollingStatus, i:%d fd:%d conn-status:%d polling-status:%d",
 					i, fd, connStatusDone[i], pollingStatus[i]);
 
 				/*
@@ -231,23 +232,17 @@ create_gang_retry:
 						continue;
 
 					case PGRES_POLLING_READING:
-						if (pos == -1)
-							addedPosition[i] = AddWaitEventToSet(
-								gang_waitset, WL_SOCKET_READABLE, fd, NULL, (void *)ev_userdata);
-						else
-							ModifyWaitEvent(gang_waitset, pos, WL_SOCKET_READABLE, NULL);
+						Assert(pos >= 0); /* should be added before */
+						ModifyWaitEvent(gang_waitset, pos, WL_SOCKET_READABLE, NULL);
 
-						elog(DEBUG2, "put readable event into waitset, i:%d fd:%d", i, fd);
+						ELOG_DISPATCHER_DEBUG("put readable event into waitset, i:%d fd:%d", i, fd);
 						break;
 
 					case PGRES_POLLING_WRITING:
-						if (pos == -1)
-							addedPosition[i] = AddWaitEventToSet(
-								gang_waitset, WL_SOCKET_WRITEABLE, fd, NULL, (void *)ev_userdata);
-						else
-							ModifyWaitEvent(gang_waitset, pos, WL_SOCKET_WRITEABLE, NULL);
+						Assert(pos >= 0); /* should be added before */
+						ModifyWaitEvent(gang_waitset, pos, WL_SOCKET_WRITEABLE, NULL);
 
-						elog(DEBUG2, "put writable event into waitset, i:%d fd:%d", i, fd);
+						ELOG_DISPATCHER_DEBUG("put writable event into waitset, i:%d fd:%d", i, fd);
 						break;
 
 					case PGRES_POLLING_FAILED:
@@ -273,11 +268,6 @@ create_gang_retry:
 										errdetail("unknown pollstatus (%s)", segdbDesc->whoami)));
 						break;
 				}
-
-				if (poll_timeout == 0)
-					ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-									errmsg("failed to acquire resources on one or more segments"),
-									errdetail("timeout expired\n (%s)", segdbDesc->whoami)));
 			}
 
 			bool allStatusDone = true;
@@ -292,27 +282,20 @@ create_gang_retry:
 
 			/* Wait until something happens */
 			nready = WaitEventSetWait(gang_waitset, poll_timeout, revents, size, WAIT_EVENT_GANG_ASSIGN);
+			Assert(nready >= 0);
 
-			if (nready < 0)
+			if (nready == 0)
 			{
-				int			sock_errno = SOCK_ERRNO;
-
-				if (sock_errno == EINTR)
-					continue;
-
-				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-								errmsg("failed to acquire resources on one or more segments"),
-								errdetail("poll() failed: errno = %d", sock_errno)));
+				ELOG_DISPATCHER_DEBUG("cdbgang_createGang_async(): WaitEventSetWait timeout after %d ms", poll_timeout);
 			}
 			else if (nready > 0)
 			{
-				elog(DEBUG2, "ready event num: %d", nready);
 				for (i = 0; i < nready; i++)
 				{
 					long pos = (long)(revents[i].user_data); /* original position */
 					segdbDesc = newGangDefinition->db_descriptors[pos];
 					int fd_desc = PQsocket(segdbDesc->conn);
-					elog(DEBUG2, "ready event[%d] pos:%ld fd_desc:%d fd:%d event:%d",
+					ELOG_DISPATCHER_DEBUG("ready event[%d] pos:%ld fd_desc:%d fd:%d event:%d",
 						i, pos, fd_desc, revents[i].fd, revents[i].events);
 
 					if (connStatusDone[pos])
