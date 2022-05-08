@@ -3836,7 +3836,7 @@ receiveChunksUDPIFC(ChunkTransportState *pTransportStates, ChunkTransportStateEn
 		 * the dispatcher for a file descriptor to wait on for that.
 		 */
 		int rc = WaitEventSetWait(waitset, MAIN_THREAD_COND_TIMEOUT_MS, rEvents, nevent, WAIT_EVENT_INTERCONNECT);
-		if (rc == 0)
+		if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG && rc == 0)
 			elog(DEBUG2, "receiveChunksUDPIFC(): WaitEventSetWait timeout after %d ms", MAIN_THREAD_COND_TIMEOUT_MS);
 
 		/* check the potential errors in rx thread. */
