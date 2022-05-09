@@ -60,7 +60,7 @@ INSERT 1000
 (1 row)
 1&: select count(*) from test_waitevent;  <waiting ...>
 -- check Dispatch/Gang-Assign event: wait all gangs created
-2: select wait_event from pg_stat_activity where wait_event_type='IPC';
+2: select wait_event from pg_stat_activity where wait_event_type='IPC' and query = 'select count(*) from test_waitevent;';
  wait_event           
 ----------------------
  Dispatch/Gang-Assign 
@@ -95,7 +95,7 @@ INSERT 1000
 (1 row)
 1&: select count(*) from test_waitevent;  <waiting ...>
 -- check Dispatch/Gang-Result event: wait all QEs finished
-2: select wait_event from pg_stat_activity where wait_event_type='IPC';
+2: select wait_event from pg_stat_activity where wait_event_type='IPC' and query = 'select count(*) from test_waitevent;';
  wait_event      
 -----------------
  Dispatch/Result 

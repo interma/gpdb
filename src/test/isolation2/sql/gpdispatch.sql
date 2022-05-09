@@ -37,7 +37,7 @@ insert into test_waitevent select generate_series(1,1000);
 1: select gp_inject_fault_infinite('send_qe_details_init_backend', 'suspend', 2);
 1&: select count(*) from test_waitevent;
 -- check Dispatch/Gang-Assign event: wait all gangs created
-2: select wait_event from pg_stat_activity where wait_event_type='IPC';
+2: select wait_event from pg_stat_activity where wait_event_type='IPC' and query = 'select count(*) from test_waitevent;';
 2: select gp_wait_until_triggered_fault('send_qe_details_init_backend', 1, 2);
 2: select gp_inject_fault_infinite('send_qe_details_init_backend', 'resume', 2);
 2: select gp_inject_fault_infinite('send_qe_details_init_backend', 'reset', 2);
@@ -48,7 +48,7 @@ insert into test_waitevent select generate_series(1,1000);
 1: select gp_inject_fault_infinite('qe_exec_finished', 'suspend', 2);
 1&: select count(*) from test_waitevent;
 -- check Dispatch/Gang-Result event: wait all QEs finished
-2: select wait_event from pg_stat_activity where wait_event_type='IPC';
+2: select wait_event from pg_stat_activity where wait_event_type='IPC' and query = 'select count(*) from test_waitevent;';
 2: select gp_wait_until_triggered_fault('qe_exec_finished', 1, 2);
 2: select gp_inject_fault_infinite('qe_exec_finished', 'resume', 2);
 2: select gp_inject_fault_infinite('qe_exec_finished', 'reset', 2);
