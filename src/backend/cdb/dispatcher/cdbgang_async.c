@@ -61,8 +61,6 @@ cdbgang_createGang_async(List *segments, SegmentType segmentType)
 
 	WaitEventSet	*gang_waitset = NULL;
 	WaitEvent		*revents = NULL;
-	/* the added position in the waiteventset */
-	int			*addedPosition = NULL;
 	/* true means connection status is confirmed, either established or in recovery mode */
 	bool		*connStatusDone = NULL;
 
@@ -114,11 +112,9 @@ create_gang_retry:
 	successful_connections = 0;
 	in_recovery_mode_count = 0;
 	retry = false;
-	gang_waitset = CreateWaitEventSet(CurrentMemoryContext, size);
 
 	pollingStatus = palloc(sizeof(PostgresPollingStatusType) * size);
 	connStatusDone = palloc(sizeof(bool) * size);
-	addedPosition = palloc(sizeof(int) * size); /* the event index in waitset */
 	revents = palloc(sizeof(WaitEvent) * size); /* returned events */
 
 	PG_TRY();
@@ -130,7 +126,6 @@ create_gang_retry:
 			char	   *options = NULL;
 			char	   *diff_options = NULL;
 
-			addedPosition[i] = -1;
 			/*
 			 * Create the connection requests.	If we find a segment without a
 			 * valid segdb we error out.  Also, if this segdb is invalid, we
@@ -179,10 +174,7 @@ create_gang_retry:
 			 * PQconnectStart(), we must act as if the PQconnectPoll() had
 			 * returned PGRES_POLLING_WRITING
 			 */
-			int fd = PQsocket(segdbDesc->conn);
 			pollingStatus[i] = PGRES_POLLING_WRITING;
-			addedPosition[i] = AddWaitEventToSet(
-				gang_waitset, WL_SOCKET_WRITEABLE, fd, NULL, (void *)(long)i); /* "i" as the event's userdata */
 		}
 
 		/*
@@ -202,11 +194,12 @@ create_gang_retry:
 								errmsg("failed to acquire resources on one or more segments"),
 								errdetail("timeout expired\n (%s)", segdbDesc->whoami)));
 
+			gang_waitset = CreateWaitEventSet(CurrentMemoryContext, size);
+
 			for (i = 0; i < size; i++)
 			{
 				segdbDesc = newGangDefinition->db_descriptors[i];
 				int fd = PQsocket(segdbDesc->conn);
-				int pos = addedPosition[i];
 
 				ELOG_DISPATCHER_DEBUG("event pollingStatus, i:%d fd:%d conn-status:%d polling-status:%d",
 					i, fd, connStatusDone[i], pollingStatus[i]);
@@ -232,17 +225,17 @@ create_gang_retry:
 						continue;
 
 					case PGRES_POLLING_READING:
-						Assert(pos >= 0); /* should be added before */
-						ModifyWaitEvent(gang_waitset, pos, WL_SOCKET_READABLE, NULL);
+						AddWaitEventToSet(gang_waitset, WL_SOCKET_READABLE, fd, NULL,
+							(void *)(long)i); /* "i" as the event's userdata */
 
-						ELOG_DISPATCHER_DEBUG("put readable event into waitset, i:%d fd:%d", i, fd);
+						ELOG_DISPATCHER_DEBUG("added readable event into waitset, i:%d fd:%d", i, fd);
 						break;
 
 					case PGRES_POLLING_WRITING:
-						Assert(pos >= 0); /* should be added before */
-						ModifyWaitEvent(gang_waitset, pos, WL_SOCKET_WRITEABLE, NULL);
+						AddWaitEventToSet(gang_waitset, WL_SOCKET_WRITEABLE, fd, NULL,
+							(void *)(long)i); /* "i" as the event's userdata */
 
-						ELOG_DISPATCHER_DEBUG("put writable event into waitset, i:%d fd:%d", i, fd);
+						ELOG_DISPATCHER_DEBUG("added writable event into waitset, i:%d fd:%d", i, fd);
 						break;
 
 					case PGRES_POLLING_FAILED:
@@ -283,6 +276,7 @@ create_gang_retry:
 			/* Wait until something happens */
 			nready = WaitEventSetWait(gang_waitset, poll_timeout, revents, size, WAIT_EVENT_GANG_ASSIGN);
 			Assert(nready >= 0);
+			FreeWaitEventSet(gang_waitset);
 
 			if (nready == 0)
 			{
@@ -293,16 +287,16 @@ create_gang_retry:
 				for (i = 0; i < nready; i++)
 				{
 					long pos = (long)(revents[i].user_data); /* original position */
-					segdbDesc = newGangDefinition->db_descriptors[pos];
-					int fd_desc = PQsocket(segdbDesc->conn);
-					ELOG_DISPATCHER_DEBUG("ready event[%d] pos:%ld fd_desc:%d fd:%d event:%d",
-						i, pos, fd_desc, revents[i].fd, revents[i].events);
-
 					if (connStatusDone[pos])
 						continue;
 
+					segdbDesc = newGangDefinition->db_descriptors[pos];
+					int fd_desc = PQsocket(segdbDesc->conn);
 					Assert(fd_desc > 0);
 					Assert(fd_desc == revents[i].fd);
+
+					ELOG_DISPATCHER_DEBUG("ready event[%d] pos:%ld fd:%d event:%d",
+						i, pos, revents[i].fd, revents[i].events);
 
 					if (revents[i].events & WL_SOCKET_WRITEABLE ||
 						revents[i].events & WL_SOCKET_READABLE)
@@ -348,9 +342,7 @@ create_gang_retry:
 
 	pfree(pollingStatus);
 	pfree(connStatusDone);
-	pfree(addedPosition);
 	pfree(revents);
-	FreeWaitEventSet(gang_waitset);
 
 	SIMPLE_FAULT_INJECTOR("gang_created");
 
