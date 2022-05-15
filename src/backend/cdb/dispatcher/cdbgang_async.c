@@ -121,6 +121,8 @@ create_gang_retry:
 	addedPosition = palloc(sizeof(int) * size); /* the event index in waitset */
 	revents = palloc(sizeof(WaitEvent) * size); /* returned events */
 
+	PG_TRY();
+	{
 		for (i = 0; i < size; i++)
 		{
 			bool		ret;
@@ -329,7 +331,22 @@ create_gang_retry:
 
 			retry = true;
 		}
+	}
+	PG_CATCH();
+	{
+		FtsNotifyProber();
+		/* FTS shows some segment DBs are down */
+		if (FtsTestSegmentDBIsDown(newGangDefinition->db_descriptors, size))
+		{
+			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+							errmsg("failed to acquire resources on one or more segments"),
+							errdetail("FTS detected one or more segments are down")));
 
+		}
+
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
 
 	pfree(pollingStatus);
 	pfree(connStatusDone);
