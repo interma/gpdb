@@ -302,8 +302,10 @@ create_gang_retry:
 					Assert(fd_desc > 0);
 					Assert(fd_desc == revents[i].fd);
 
-					if (revents[i].events & WL_SOCKET_WRITEABLE ||
-						revents[i].events & WL_SOCKET_READABLE)
+					if (
+						( pollingStatus[pos] == PGRES_POLLING_READING && (revents[i].events & WL_SOCKET_READABLE) ) ||
+						( pollingStatus[pos] == PGRES_POLLING_WRITING && (revents[i].events & WL_SOCKET_WRITEABLE) )
+						)
 						pollingStatus[pos] = PQconnectPoll(segdbDesc->conn);
 				}
 			}
