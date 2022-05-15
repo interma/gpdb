@@ -855,11 +855,16 @@ WaitEventAdjustEpoll(WaitEventSet *set, WaitEvent *event, int action)
 	rc = epoll_ctl(set->epoll_fd, action, event->fd, &epoll_ev);
 
 	if (rc < 0)
-		ereport(ERROR,
+	{
+		if (errno == ENOENT)
+        	epoll_ctl(set->epoll_fd, EPOLL_CTL_ADD, event->fd, &epoll_ev);
+		else
+			ereport(ERROR,
 				(errcode_for_socket_access(),
-		/* translator: %s is a syscall name, such as "poll()" */
+				/* translator: %s is a syscall name, such as "poll()" */
 				 errmsg("%s failed: %m",
 						"epoll_ctl()")));
+	}
 }
 #endif
 
