@@ -59,7 +59,7 @@ cdbgang_createGang_async(List *segments, SegmentType segmentType)
 	bool	retry = false;
 	int		totalSegs = 0;
 
-	WaitEventSet	*gang_waitset = NULL;
+	/* the returned events of waiteventset */
 	WaitEvent		*revents = NULL;
 	/* true means connection status is confirmed, either established or in recovery mode */
 	bool		*connStatusDone = NULL;
@@ -115,7 +115,7 @@ create_gang_retry:
 
 	pollingStatus = palloc(sizeof(PostgresPollingStatusType) * size);
 	connStatusDone = palloc(sizeof(bool) * size);
-	revents = palloc(sizeof(WaitEvent) * size); /* returned events */
+	revents = palloc(sizeof(WaitEvent) * size);
 
 	PG_TRY();
 	{
@@ -186,15 +186,23 @@ create_gang_retry:
 
 		for (;;)
 		{
-			int			nready;
-
 			poll_timeout = getPollTimeout(&startTS);
 			if (poll_timeout == 0)
 				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 								errmsg("failed to acquire resources on one or more segments"),
 								errdetail("timeout expired\n (%s)", segdbDesc->whoami)));
 
-			gang_waitset = CreateWaitEventSet(CurrentMemoryContext, size);
+			/*
+			 * GPDB_12_MERGE_FIXME: create and destory waiteventset in each loop
+			 * may impact the performance, please see:
+			 * https://github.com/greenplum-db/gpdb/pull/13494#discussion_r874243725
+			 * Let's verify it later.
+			 */
+			/*
+			 * Since the set of FDs can change when we call PQconnectPoll() below,
+			 * create a new wait event set to poll on for every loop iteration.
+			 */
+			WaitEventSet	*gang_waitset = CreateWaitEventSet(CurrentMemoryContext, size);
 
 			for (i = 0; i < size; i++)
 			{
@@ -274,7 +282,7 @@ create_gang_retry:
 			CHECK_FOR_INTERRUPTS();
 
 			/* Wait until something happens */
-			nready = WaitEventSetWait(gang_waitset, poll_timeout, revents, size, WAIT_EVENT_GANG_ASSIGN);
+			int nready = WaitEventSetWait(gang_waitset, poll_timeout, revents, size, WAIT_EVENT_GANG_ASSIGN);
 			Assert(nready >= 0);
 			FreeWaitEventSet(gang_waitset);
 
@@ -286,7 +294,8 @@ create_gang_retry:
 			{
 				for (i = 0; i < nready; i++)
 				{
-					long pos = (long)(revents[i].user_data); /* original position */
+					/* original position in the db_descriptors */
+					long pos = (long)(revents[i].user_data);
 					if (connStatusDone[pos])
 						continue;
 
@@ -300,6 +309,12 @@ create_gang_retry:
 
 					if (revents[i].events & WL_SOCKET_WRITEABLE ||
 						revents[i].events & WL_SOCKET_READABLE)
+						/*
+						 * The official documentation says:
+						 * Caution: do not assume that the socket remains the same across PQconnectPoll calls.
+						 *
+						 * So must add all sock FDs to waiteventset again in the next loop.
+						 */
 						pollingStatus[pos] = PQconnectPoll(segdbDesc->conn);
 				}
 			}
