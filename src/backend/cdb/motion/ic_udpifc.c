@@ -3754,7 +3754,7 @@ receiveChunksUDPIFC(ChunkTransportState *pTransportStates, ChunkTransportStateEn
 	waitset = CreateWaitEventSet(CurrentMemoryContext, nevent);
 
 	/*
-	 * Use PG_TRY() - PG_CATCH() to make sure destory the waiteventset (close the epoll fd)
+	 * Use PG_TRY() - PG_CATCH() to make sure destroy the waiteventset (close the epoll fd)
 	 * The main receive logic is in receiveChunksUDPIFCLoop()
 	 */
 	PG_TRY();
@@ -3844,7 +3844,7 @@ receiveChunksUDPIFCLoop(ChunkTransportState *pTransportStates, ChunkTransportSta
 		if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
 		{
 			elog(DEBUG5, "waiting (timed) on route %d %s", rx_control_info.mainWaitingState.waitingRoute,
-				(rx_control_info.mainWaitingState.waitingRoute == ANY_ROUTE ? "(any route)" : ""));
+				 (rx_control_info.mainWaitingState.waitingRoute == ANY_ROUTE ? "(any route)" : ""));
 		}
 
 		/*
@@ -3889,8 +3889,8 @@ receiveChunksUDPIFCLoop(ChunkTransportState *pTransportStates, ChunkTransportSta
 			if (!PostmasterIsAlive())
 				ereport(FATAL,
 						(errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-						errmsg("interconnect failed to recv chunks"),
-						errdetail("Postmaster is not alive.")));
+						 errmsg("interconnect failed to recv chunks"),
+						 errdetail("Postmaster is not alive.")));
 		}
 
 		pthread_mutex_lock(&ic_control_info.lock);

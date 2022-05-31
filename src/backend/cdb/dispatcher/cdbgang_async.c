@@ -56,8 +56,9 @@ cdbgang_createGang_async(List *segments, SegmentType segmentType)
 	int		poll_timeout = 0;
 	int		i = 0;
 	int		size = 0;
-	bool	retry = false;
 	int		totalSegs = 0;
+	bool	allStatusDone = true;
+	bool	retry = false;
 
 	WaitEventSet    *volatile gang_waitset = NULL;
 	/* the returned events of waiteventset */
@@ -194,7 +195,7 @@ create_gang_retry:
 								errdetail("timeout expired\n (%s)", segdbDesc->whoami)));
 
 			/*
-			 * GPDB_12_MERGE_FIXME: create and destory waiteventset in each loop
+			 * GPDB_12_MERGE_FIXME: create and destroy waiteventset in each loop
 			 * may impact the performance, please see:
 			 * https://github.com/greenplum-db/gpdb/pull/13494#discussion_r874243725
 			 * Let's verify it later.
@@ -272,7 +273,7 @@ create_gang_retry:
 				}
 			}
 
-			bool allStatusDone = true;
+			allStatusDone = true;
 			for (i = 0; i < size; i++)
 				allStatusDone &= connStatusDone[i];
 			if (allStatusDone)

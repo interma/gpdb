@@ -220,7 +220,7 @@ cdbdisp_waitDispatchFinish_async(struct CdbDispatcherState *ds)
 	int				dispatchCount = pParms->dispatchCount;
 	WaitEventSet 	*volatile waitset = CreateWaitEventSet(CurrentMemoryContext, dispatchCount);
 
-	/* Use PG_TRY() - PG_CATCH() to make sure destory the waiteventset (close the epoll fd) */
+	/* Use PG_TRY() - PG_CATCH() to make sure destroy the waiteventset (close the epoll fd) */
 	PG_TRY();
 	{
 		cdbdisp_waitDispatchFinishLoop_async(ds, waitset);
@@ -468,7 +468,7 @@ checkDispatchResult(CdbDispatcherState *ds, int timeout_sec)
 	CdbDispatchCmdAsync *pParms = (CdbDispatchCmdAsync *) ds->dispatchParams;
 	WaitEventSet *volatile waitset = CreateWaitEventSet(CurrentMemoryContext, pParms->dispatchCount);
 
-	/* Use PG_TRY() - PG_CATCH() to make sure destory the waiteventset (close the epoll fd) */
+	/* Use PG_TRY() - PG_CATCH() to make sure destroy the waiteventset (close the epoll fd) */
 	PG_TRY();
 	{
 		checkDispatchResultLoop(ds, timeout_sec, waitset);
@@ -572,7 +572,7 @@ checkDispatchResultLoop(CdbDispatcherState *ds, int timeout_sec, WaitEventSet *w
 				 */
 				if (pqFlush(conn) < 0)
 					elog(LOG, "Failed flushing outbound data to %s:%s",
-						segdbDesc->whoami, PQerrorMessage(conn));
+						 segdbDesc->whoami, PQerrorMessage(conn));
 			}
 
 			/* add segment sock to the waitset */
@@ -605,8 +605,8 @@ checkDispatchResultLoop(CdbDispatcherState *ds, int timeout_sec, WaitEventSet *w
 		if (timeout_sec == 0)
 			timeout = 0;
 		else if (pParms->waitMode == DISPATCH_WAIT_NONE ||
-				pParms->waitMode == DISPATCH_WAIT_ACK_ROOT ||
-				sentSignal)
+				 pParms->waitMode == DISPATCH_WAIT_ACK_ROOT ||
+				 sentSignal)
 			timeout = DISPATCH_WAIT_TIMEOUT_MSEC;
 		else
 			timeout = DISPATCH_WAIT_CANCEL_TIMEOUT_MSEC;
