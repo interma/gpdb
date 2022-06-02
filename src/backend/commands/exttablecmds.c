@@ -234,7 +234,11 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 
 	/* If encoding is defaulted, use database encoding */
 	if (encoding < 0)
+	{
 		encoding = pg_get_client_encoding();
+		createExtStmt->encoding = lappend(createExtStmt->encoding,
+			makeDefElem("encoding", (Node *)makeInteger(encoding), -1));
+	}
 
 	/*
 	 * If the number of locations (file or http URIs) exceed the number of
