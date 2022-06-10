@@ -379,10 +379,11 @@ SerializeTuple(TupleTableSlot *slot, SerTupInfo *pSerInfo, struct directTranspor
 
 	/*
 	 * GPDB_12_MERGE_FIXME: This used to support serializing memtuples directly.
-	 * That got removed with MinimalTuples in the merge. Resurrect the MemtUple
-	 * support if there's a performance benefit.
+	 * That got removed with MinimalTuples in the merge.
 	 *
-	 * Details please see slack discussion:
+	 * In previous code: we using MemTuple in motion.
+	 * Comparing with MinimalTuple: it is more compact and has a little performance benefit.
+	 * Details please see gp slack discussion:
 	 * https://app.slack.com/client/T6T3AS6NL/C74P7FZFG/thread/C74P7FZFG-1582306400.252200
 	 */
 	/* Check if the slot has external attribute */
