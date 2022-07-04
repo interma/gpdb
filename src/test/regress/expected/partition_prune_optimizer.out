@@ -3476,7 +3476,7 @@ explain (analyze, costs off, summary off, timing off) select * from ma_test wher
    Merge Key: ma_test_p1.b
    ->  Sort (actual rows=8 loops=1)
          Sort Key: ma_test_p1.b
-         Sort Method:  quicksort  Memory: 150kB
+         Sort Method:  quicksort  Memory: 75kB
          ->  Nested Loop (actual rows=8 loops=1)
                Join Filter: (ma_test_p1.a >= (min(ma_test_p2_1.b)))
                Rows Removed by Join Filter: 3
