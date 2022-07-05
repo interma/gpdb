@@ -998,12 +998,8 @@ cdbexplain_depositStatsToNode(PlanState *planstate, CdbExplain_RecvStatCtx *ctx)
 	cdbexplain_depStatAcc_init0(&totalWorkfileCreated);
 	cdbexplain_depStatAcc_init0(&totalPartTableScanned);
 	for (int i = 0; i < NUM_SORT_METHOD; i++)
-	{
 		for (int j = 0; j < NUM_SORT_SPACE_TYPE; j++)
-		{
 			cdbexplain_depStatAcc_init0(&sortSpaceUsed[j][i]);
-		}
-	}
 
 	/* Initialize per-slice accumulators. */
 	cdbexplain_depStatAcc_init0(&peakmemused);
@@ -1062,12 +1058,8 @@ cdbexplain_depositStatsToNode(PlanState *planstate, CdbExplain_RecvStatCtx *ctx)
 	ns->totalWorkfileCreated = totalWorkfileCreated.agg;
 	ns->totalPartTableScanned = totalPartTableScanned.agg;
 	for (int i = 0; i < NUM_SORT_METHOD; i++)
-	{
 		for (int j = 0; j < NUM_SORT_SPACE_TYPE; j++)
-		{
 			ns->sortSpaceUsed[j][i] = sortSpaceUsed[j][i].agg;
-		}
-	}
 
 	/* Roll up summary over all nodes of slice into RecvStatCtx. */
 	ctx->workmemused_max = Max(ctx->workmemused_max, workmemused.agg.vmax);
