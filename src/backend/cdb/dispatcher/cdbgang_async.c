@@ -3,6 +3,9 @@
  * cdbgang_async.c
  *	  Functions for asynchronous implementation of creating gang.
  *
+ * GPDB_12_MERGE_FIXME: Like in cdbdisp_async.c, we should replace poll()
+ * with WaitEventSetWait() here.
+ *
  * Portions Copyright (c) 2005-2008, Greenplum inc
  * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  *
@@ -24,7 +27,6 @@
 
 #include "access/xact.h"
 #include "storage/ipc.h"		/* For proc_exit_inprogress  */
-#include "pgstat.h"
 #include "tcop/tcopprot.h"
 #include "libpq-fe.h"
 #include "libpq-int.h"
@@ -59,16 +61,16 @@ cdbgang_createGang_async(List *segments, SegmentType segmentType)
 	int		totalSegs = 0;
 	bool	allStatusDone = true;
 	bool	retry = false;
-
-	WaitEventSet    *volatile gang_waitset = NULL;
-	/* the returned events of waiteventset */
-	WaitEvent		*revents = NULL;
-	/* true means connection status is confirmed, either established or in recovery mode */
-	bool		*connStatusDone = NULL;
+	/*
+	 * true means connection status is confirmed, either established or in
+	 * recovery mode
+	 */
+	bool	   *connStatusDone = NULL;
 
 	size = list_length(segments);
 
 	ELOG_DISPATCHER_DEBUG("createGang size = %d, segment type = %d", size, segmentType);
+
 	Assert(CurrentGangCreating == NULL);
 
 	/* If we're in a retry, we may need to reset our initial state, a bit */
@@ -115,9 +117,13 @@ create_gang_retry:
 	in_recovery_mode_count = 0;
 	retry = false;
 
+	/*
+	 * allocate memory within perGangContext and will be freed automatically
+	 * when gang is destroyed
+	 */
 	pollingStatus = palloc(sizeof(PostgresPollingStatusType) * size);
 	connStatusDone = palloc(sizeof(bool) * size);
-	revents = palloc(sizeof(WaitEvent) * size);
+	struct pollfd *fds;
 
 	PG_TRY();
 	{
@@ -185,14 +191,14 @@ create_gang_retry:
 		 * all completed or we reach timeout.
 		 */
 		gettimeofday(&startTS, NULL);
+		fds = (struct pollfd *) palloc0(sizeof(struct pollfd) * size);
 
 		for (;;)
 		{
+			int			nready;
+			int			nfds = 0;
+
 			poll_timeout = getPollTimeout(&startTS);
-			if (poll_timeout == 0)
-				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-								errmsg("failed to acquire resources on one or more segments"),
-								errdetail("timeout expired\n (%s)", segdbDesc->whoami)));
 
 			/*
 			 * GPDB_12_MERGE_FIXME: create and destroy waiteventset in each loop
@@ -204,7 +210,6 @@ create_gang_retry:
 			 * Since the set of FDs can change when we call PQconnectPoll() below,
 			 * create a new wait event set to poll on for every loop iteration.
 			 */
-			gang_waitset = CreateWaitEventSet(CurrentMemoryContext, size);
 
 			for (i = 0; i < size; i++)
 			{
@@ -235,17 +240,15 @@ create_gang_retry:
 						continue;
 
 					case PGRES_POLLING_READING:
-						AddWaitEventToSet(gang_waitset, WL_SOCKET_READABLE, fd, NULL,
-							(void *)(long)i); /* "i" as the event's userdata */
-
-						ELOG_DISPATCHER_DEBUG("added readable event into waitset, i:%d fd:%d", i, fd);
+						fds[nfds].fd = PQsocket(segdbDesc->conn);
+						fds[nfds].events = POLLIN;
+						nfds++;
 						break;
 
 					case PGRES_POLLING_WRITING:
-						AddWaitEventToSet(gang_waitset, WL_SOCKET_WRITEABLE, fd, NULL,
-							(void *)(long)i); /* "i" as the event's userdata */
-
-						ELOG_DISPATCHER_DEBUG("added writable event into waitset, i:%d fd:%d", i, fd);
+						fds[nfds].fd = PQsocket(segdbDesc->conn);
+						fds[nfds].events = POLLOUT;
+						nfds++;
 						break;
 
 					case PGRES_POLLING_FAILED:
@@ -271,58 +274,53 @@ create_gang_retry:
 										errdetail("unknown pollstatus (%s)", segdbDesc->whoami)));
 						break;
 				}
+
+				if (poll_timeout == 0)
+					ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+									errmsg("failed to acquire resources on one or more segments"),
+									errdetail("timeout expired\n (%s)", segdbDesc->whoami)));
 			}
 
-			allStatusDone = true;
-			for (i = 0; i < size; i++)
-				allStatusDone &= connStatusDone[i];
-			if (allStatusDone)
-			{
-				FreeWaitEventSet(gang_waitset);
-				gang_waitset = NULL;
+			if (nfds == 0)
 				break;
-			}
 
 			SIMPLE_FAULT_INJECTOR("create_gang_in_progress");
 
 			CHECK_FOR_INTERRUPTS();
 
 			/* Wait until something happens */
-			int nready = WaitEventSetWait(gang_waitset, poll_timeout, revents, size, WAIT_EVENT_GANG_ASSIGN);
-			Assert(nready >= 0);
-			FreeWaitEventSet(gang_waitset);
-			gang_waitset = NULL;
+			nready = poll(fds, nfds, poll_timeout);
 
-			if (nready == 0)
+			if (nready < 0)
 			{
-				ELOG_DISPATCHER_DEBUG("cdbgang_createGang_async(): WaitEventSetWait timeout after %d ms", poll_timeout);
+				int			sock_errno = SOCK_ERRNO;
+
+				if (sock_errno == EINTR)
+					continue;
+
+				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+								errmsg("failed to acquire resources on one or more segments"),
+								errdetail("poll() failed: errno = %d", sock_errno)));
 			}
 			else if (nready > 0)
 			{
-				for (i = 0; i < nready; i++)
+				int			currentFdNumber = 0;
+
+				for (i = 0; i < size; i++)
 				{
-					/* original position in the db_descriptors */
-					long pos = (long)(revents[i].user_data);
-					if (connStatusDone[pos])
+					segdbDesc = newGangDefinition->db_descriptors[i];
+					if (connStatusDone[i])
 						continue;
 
-					segdbDesc = newGangDefinition->db_descriptors[pos];
-					int fd_desc PG_USED_FOR_ASSERTS_ONLY = PQsocket(segdbDesc->conn);
-					Assert(fd_desc > 0);
-					Assert(fd_desc == revents[i].fd);
+					Assert(PQsocket(segdbDesc->conn) > 0);
+					Assert(PQsocket(segdbDesc->conn) == fds[currentFdNumber].fd);
 
-					ELOG_DISPATCHER_DEBUG("ready event[%d] pos:%ld fd:%d event:%d",
-						i, pos, revents[i].fd, revents[i].events);
+					if (fds[currentFdNumber].revents & fds[currentFdNumber].events ||
+						fds[currentFdNumber].revents & (POLLERR | POLLHUP | POLLNVAL))
+						pollingStatus[i] = PQconnectPoll(segdbDesc->conn);
 
-					if (revents[i].events & WL_SOCKET_WRITEABLE ||
-						revents[i].events & WL_SOCKET_READABLE)
-						/*
-						 * The official documentation says:
-						 * Caution: do not assume that the socket remains the same across PQconnectPoll calls.
-						 *
-						 * So must add all sock FDs to waiteventset again in the next loop.
-						 */
-						pollingStatus[pos] = PQconnectPoll(segdbDesc->conn);
+					currentFdNumber++;
+
 				}
 			}
 		}
@@ -348,9 +346,6 @@ create_gang_retry:
 	}
 	PG_CATCH();
 	{
-		if (gang_waitset != NULL)
-			FreeWaitEventSet(gang_waitset);
-
 		FtsNotifyProber();
 		/* FTS shows some segment DBs are down */
 		if (FtsTestSegmentDBIsDown(newGangDefinition->db_descriptors, size))
@@ -364,10 +359,6 @@ create_gang_retry:
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
-
-	pfree(pollingStatus);
-	pfree(connStatusDone);
-	pfree(revents);
 
 	SIMPLE_FAULT_INJECTOR("gang_created");
 
