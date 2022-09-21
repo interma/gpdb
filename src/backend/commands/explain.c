@@ -1040,6 +1040,9 @@ show_dispatch_info(Slice *slice, ExplainState *es, Plan *plan)
 static void
 ExplainPreScanNode(PlanState *planstate, Bitmapset **rels_used)
 {
+	if (planstate == NULL)
+		return;
+
 	Plan	   *plan = planstate->plan;
 
 	switch (nodeTag(plan))

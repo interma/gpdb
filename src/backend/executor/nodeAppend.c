@@ -59,6 +59,8 @@
 
 #include "executor/execdebug.h"
 #include "executor/nodeAppend.h"
+#include "cdb/cdbaocsam.h"
+#include "cdb/cdbappendonlyam.h"
 
 static bool exec_append_initialize_next(AppendState *appendstate);
 
@@ -144,6 +146,7 @@ ExecInitAppend(Append *node, EState *estate, int eflags)
 	appendstate->ps.state = estate;
 	appendstate->appendplans = appendplanstates;
 	appendstate->as_nplans = nplans;
+	// appendstate->as_nplans = 1;
 
 	/*
 	 * Miscellaneous initialization
@@ -162,12 +165,17 @@ ExecInitAppend(Append *node, EState *estate, int eflags)
 	 * call ExecInitNode on each of the plans to be executed and save the
 	 * results into the array "appendplans".
 	 */
+
+
+	// will lazy init it later
 	i = 0;
 	foreach(lc, node->appendplans)
 	{
 		Plan	   *initNode = (Plan *) lfirst(lc);
-
-		appendplanstates[i] = ExecInitNode(initNode, estate, eflags);
+		appendplanstates[i] = NULL;
+		
+		if (i == 0)
+			appendplanstates[i] = ExecInitNode(initNode, estate, eflags);
 		i++;
 	}
 
@@ -205,6 +213,16 @@ ExecAppend(AppendState *node)
 		 */
 		subnode = node->appendplans[node->as_whichplan];
 
+		// if need init
+		if (subnode == NULL)
+		{
+			Append *a = (Append *)(node->ps.plan);
+			Plan *initNode = (Plan *)lfirst(list_nth_cell(a->appendplans,node->as_whichplan)); 
+			node->appendplans[node->as_whichplan] = ExecInitNode(initNode, node->ps.state, node->eflags);
+			subnode = node->appendplans[node->as_whichplan];
+			// node->as_nplans++;
+		}
+
 		/*
 		 * get a tuple from the subplan
 		 */
@@ -229,6 +247,20 @@ ExecAppend(AppendState *node)
 			node->as_whichplan++;
 		else
 			node->as_whichplan--;
+		
+		// cleanup current subplan
+		if (subnode->type == T_SeqScanState)
+		{
+			SeqScanState *sstate = (SeqScanState*)subnode;
+			if (sstate->ss_currentScanDesc_heap)
+				heap_afterscan(sstate->ss_currentScanDesc_heap);
+			if (sstate->ss_currentScanDesc_ao)
+				appendonly_afterscan(sstate->ss_currentScanDesc_ao);
+			if (sstate->ss_currentScanDesc_aocs)
+				aocs_afterscan(sstate->ss_currentScanDesc_aocs);
+
+		}
+		
 		if (!exec_append_initialize_next(node))
 			return ExecClearTuple(node->ps.ps_ResultTupleSlot);
 
