@@ -533,6 +533,19 @@ checkDispatchResult(CdbDispatcherState *ds, int timeout_sec)
 			}
 
 			/*
+			 * When the connection was broken, the previous pqFlush() set:
+			 * 			sock = -1 and status = CONNECTION_BAD
+			 * it will cause an infinite hang when poll() it later, so need to skip it here
+			 */
+			if (cdbconn_isBadConnection(segdbDesc))
+			{
+				elog(WARNING, "Connection %s is broken, PQerrorMessage:%s",
+					segdbDesc->whoami, PQerrorMessage(conn));
+				dispatchResult->stillRunning = false;
+				continue;
+			}
+
+			/*
 			 * Add socket to fd_set if still connected.
 			 */
 			sock = PQsocket(conn);
