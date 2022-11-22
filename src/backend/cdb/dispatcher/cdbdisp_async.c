@@ -532,6 +532,24 @@ checkDispatchResult(CdbDispatcherState *ds, int timeout_sec)
 						 segdbDesc->whoami, PQerrorMessage(conn));
 			}
 
+#ifdef FAULT_INJECTOR
+			/* inject invalid sock to simulate an pqFlush() error */
+			static bool saved_sock = -1;
+			if (FaultInjector_InjectFaultIfSet("inject_invalid_sock_for_checkDispatchResult",
+						DDLNotSpecified,
+						"" /* databaseName */,
+						"" /* tableName */) == FaultInjectorTypeSkip)
+			{
+				if (i == 0 && saved_sock == -1)
+				{
+					saved_sock = conn->sock;
+					conn->sock = -1;
+					strlcpy(conn->errorMessage.data, "inject invalid sock\n", conn->errorMessage.maxlen);
+					conn->errorMessage.len = strlen(conn->errorMessage.data);
+					i--;
+				}
+			}
+#endif
 			/*
 			 * When the connection was broken, the previous pqFlush() set:
 			 * 			sock = -1 and status = CONNECTION_BAD
@@ -539,9 +557,19 @@ checkDispatchResult(CdbDispatcherState *ds, int timeout_sec)
 			 */
 			if (cdbconn_isBadConnection(segdbDesc))
 			{
-				elog(WARNING, "Connection %s is broken, PQerrorMessage:%s",
+				elog(WARNING, "Connection (%s) is broken, PQerrorMessage:%s",
 					segdbDesc->whoami, PQerrorMessage(conn));
 				dispatchResult->stillRunning = false;
+#ifdef FAULT_INJECTOR
+				/* restore the saved sock */
+				if (i == -1)
+				{
+					conn->sock = saved_sock;
+					conn->errorMessage.data[0] = '\0';
+					conn->errorMessage.len = 0;
+					dispatchResult->stillRunning = true;
+				}
+#endif
 				continue;
 			}
 
