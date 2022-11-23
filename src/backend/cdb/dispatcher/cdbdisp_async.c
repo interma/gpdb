@@ -534,7 +534,7 @@ checkDispatchResult(CdbDispatcherState *ds, int timeout_sec)
 
 #ifdef FAULT_INJECTOR
 			/* inject invalid sock to simulate an pqFlush() error */
-			static bool saved_sock = -1;
+			static int saved_sock = -1;
 			if (FaultInjector_InjectFaultIfSet("inject_invalid_sock_for_checkDispatchResult",
 						DDLNotSpecified,
 						"" /* databaseName */,
