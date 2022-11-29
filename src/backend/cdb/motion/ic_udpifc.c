@@ -1795,6 +1795,19 @@ sendControlMessage(icpkthdr *pkt, int fd, struct sockaddr *addr, socklen_t peerL
 		return;
 	}
 #endif
+	// interma: simulate skip the ACK of EOS
+	if (GpIdentity.segindex==0 && pkt->recvSliceIndex==2 && (pkt->flags & UDPIC_FLAGS_EOS) )
+	{ 
+		if (pkt->srcContentId==0)
+		{
+			logPkt("DROP the ACK of EOS", pkt);
+			return;
+		}
+		else
+		{
+			logPkt("SEND the ACK of EOS", pkt);
+		}
+	}
 
 	/* Add CRC for the control message. */
 	if (gp_interconnect_full_crc)
@@ -6063,7 +6076,7 @@ handleDataPacket(MotionConn *conn, icpkthdr *pkt, struct sockaddr_storage *peer,
 				if (DEBUG1 >= log_min_messages)
 					write_log("RX_THREAD: the packet with EOS flag is available for access in the queue for route %d", conn->route);
 			}
-
+			
 			/* ack data packet */
 			setAckSendParam(param, conn, UDPIC_FLAGS_CAPACITY | UDPIC_FLAGS_ACK | conn->conn_info.flags, conn->conn_info.seq - 1, conn->conn_info.extraSeq);
 
