@@ -5798,6 +5798,7 @@ tlist_matches_coltypelist(List *tlist, List *coltypelist)
 static bool
 should_eval_stable_functions(PlannerInfo *root)
 {
+	return false;
 	/*
 	 * Without PlannerGlobal, we cannot mark the plan as a `oneoffPlan`
 	 */
