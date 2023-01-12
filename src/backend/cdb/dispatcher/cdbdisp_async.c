@@ -218,21 +218,17 @@ cdbdisp_waitDispatchFinish_async(struct CdbDispatcherState *ds)
 {
 	CdbDispatchCmdAsync *pParms = (CdbDispatchCmdAsync *) ds->dispatchParams;
 	int				dispatchCount = pParms->dispatchCount;
-	WaitEventSet 	*volatile waitset = CreateWaitEventSet(CurrentMemoryContext, dispatchCount);
-
+	initDispatchWaitEventSet(dispatchCount);
 	/* Use PG_TRY() - PG_CATCH() to make sure destroy the waiteventset (close the epoll fd) */
 	PG_TRY();
 	{
-		cdbdisp_waitDispatchFinishLoop_async(ds, waitset);
+		cdbdisp_waitDispatchFinishLoop_async(ds, DispWaitSet);
 	}
 	PG_CATCH();
 	{
-		FreeWaitEventSet(waitset);
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
-
-	FreeWaitEventSet(waitset);
 }
 
 static void
@@ -466,21 +462,18 @@ static void
 checkDispatchResult(CdbDispatcherState *ds, int timeout_sec)
 {
 	CdbDispatchCmdAsync *pParms = (CdbDispatchCmdAsync *) ds->dispatchParams;
-	WaitEventSet *volatile waitset = CreateWaitEventSet(CurrentMemoryContext, pParms->dispatchCount);
 
+	initDispatchWaitEventSet(pParms->dispatchCount);
 	/* Use PG_TRY() - PG_CATCH() to make sure destroy the waiteventset (close the epoll fd) */
 	PG_TRY();
 	{
-		checkDispatchResultLoop(ds, timeout_sec, waitset);
+		checkDispatchResultLoop(ds, timeout_sec, DispWaitSet);
 	}
 	PG_CATCH();
 	{
-		FreeWaitEventSet(waitset);
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
-
-	FreeWaitEventSet(waitset);
 }
 
 static void

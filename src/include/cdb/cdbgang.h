@@ -18,6 +18,7 @@
 #include "executor/execdesc.h"
 #include "utils/faultinjector.h"
 #include "utils/portal.h"
+#include "storage/latch.h"
 
 struct Port;
 struct QueryDesc;
@@ -52,6 +53,8 @@ extern int ic_htab_size;
 extern MemoryContext GangContext;
 extern Gang *CurrentGangCreating;
 
+extern WaitEventSet *DispWaitSet;
+
 /*
  * cdbgang_createGang:
  *
@@ -62,6 +65,8 @@ extern Gang *CurrentGangCreating;
  */
 extern Gang *
 cdbgang_createGang(List *segments, SegmentType segmentType);
+
+extern void initDispatchWaitEventSet(int nevents);
 
 extern const char *gangTypeToString(GangType type);
 

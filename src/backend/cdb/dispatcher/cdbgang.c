@@ -78,6 +78,9 @@ CreateGangFunc pCreateGangFunc = cdbgang_createGang_async;
 static bool NeedResetSession = false;
 static Oid	OldTempNamespace = InvalidOid;
 
+/* WaitEventSet for dispatch */
+WaitEventSet *DispWaitSet = NULL;
+
 /*
  * cdbgang_createGang:
  *
@@ -92,6 +95,23 @@ cdbgang_createGang(List *segments, SegmentType segmentType)
 	Assert(pCreateGangFunc);
 
 	return pCreateGangFunc(segments, segmentType);
+}
+
+/*
+ * init DispWaitSet: create it in the first time and reset it later
+ */
+void
+initDispatchWaitEventSet(int nevents)
+{
+	/*
+	 * its lifecycle is in the whole QD process,
+	 * so alloc it in the TopMemoryContext (rather than DispatcherContext)
+	 */
+	MemoryContext context = TopMemoryContext;
+	if (DispWaitSet == NULL)
+		DispWaitSet = CreateWaitEventSet(context, nevents);
+	else
+		ResetWaitEventSet(&DispWaitSet, context, nevents);
 }
 
 /*

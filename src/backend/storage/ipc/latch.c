@@ -619,6 +619,80 @@ CreateWaitEventSet(MemoryContext context, int nevents)
 }
 
 /*
+ * Reset a existed WaitEventSet
+ *  - if enable epoll, it frees the old memory and reuse the epoll object.
+ *  - else it just Free+Create a new WaitEventSet.
+ *
+ * Note: Why we want to reuse the epoll object? In previous code, it create
+ * and free waiteventset several times for one query. And it leads performance
+ * downgrade in pgbench test. After investigation, we found the culprit is
+ * a large number of concurrent creation and destruction of epoll objects. So
+ * we introduce the function to reuse epoll object.
+ */
+void
+ResetWaitEventSet(WaitEventSet **pset, MemoryContext context, int nevents)
+{
+	if (*pset == NULL)
+		return;
+
+#if defined(WAIT_USE_EPOLL)
+	WaitEventSet *set = *pset;
+	/* delete existed events */
+	for (int i = 0; i < set->nevents; i++)
+	{
+		WaitEvent  *event = &(set->events[i]);
+		int			rc;
+		rc = epoll_ctl(set->epoll_fd, EPOLL_CTL_DEL, event->fd, NULL);
+		if (rc < 0)
+		{
+			ereport(DEBUG1,
+				(errcode_for_socket_access(),
+				/* translator: %s is a syscall name, such as "poll()" */
+				 errmsg("%s cleanup epoll events failed: %m",
+					 "epoll_ctl()")));
+			/*
+			 * in some scenarios, the event's fd has been cleanup,
+			 * so need to destory the whold epoll object
+			 */
+			goto CREATE_NEW_EV;
+		}
+	}
+
+	/* the same alloc logic as CreateWaitEventSet() */
+	char	   *data;
+	Size		sz = 0;
+	sz += MAXALIGN(sizeof(WaitEventSet));
+	sz += MAXALIGN(sizeof(WaitEvent) * nevents);
+	sz += MAXALIGN(sizeof(struct epoll_event) * nevents);
+	data = (char *) MemoryContextAllocZero(context, sz);
+
+	/* reuse the epoll object and free the old memory */
+	int	bak_epoll_fd = set->epoll_fd;
+	pfree(set);
+
+	*pset = (WaitEventSet *) data;
+	set = *pset;
+	data += MAXALIGN(sizeof(WaitEventSet));
+	set->events = (WaitEvent *) data;
+	data += MAXALIGN(sizeof(WaitEvent) * nevents);
+	set->epoll_ret_events = (struct epoll_event *) data;
+	data += MAXALIGN(sizeof(struct epoll_event) * nevents);
+
+	set->latch = NULL;
+	set->nevents_space = nevents;
+	set->exit_on_postmaster_death = false;
+
+	/* reuse the epoll object (is empty now) */
+	set->epoll_fd = bak_epoll_fd;
+	return;
+#endif
+CREATE_NEW_EV:
+	FreeWaitEventSet(*pset);
+	*pset = CreateWaitEventSet(context, nevents);
+
+}
+
+/*
  * Free a previously created WaitEventSet.
  *
  * Note: preferably, this shouldn't have to free any resources that could be

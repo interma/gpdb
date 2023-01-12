@@ -60,7 +60,6 @@ cdbgang_createGang_async(List *segments, SegmentType segmentType)
 	bool	allStatusDone = true;
 	bool	retry = false;
 
-	WaitEventSet    *volatile gang_waitset = NULL;
 	/* the returned events of waiteventset */
 	WaitEvent		*revents = NULL;
 	/* true means connection status is confirmed, either established or in recovery mode */
@@ -208,7 +207,7 @@ create_gang_retry:
 			 * Since the set of FDs can change when we call PQconnectPoll() below,
 			 * create a new wait event set to poll on for every loop iteration.
 			 */
-			gang_waitset = CreateWaitEventSet(CurrentMemoryContext, size);
+			initDispatchWaitEventSet(size);
 
 			for (i = 0; i < size; i++)
 			{
@@ -242,14 +241,14 @@ create_gang_retry:
 						continue;
 
 					case PGRES_POLLING_READING:
-						AddWaitEventToSet(gang_waitset, WL_SOCKET_READABLE, fd, NULL,
+						AddWaitEventToSet(DispWaitSet, WL_SOCKET_READABLE, fd, NULL,
 							(void *)(long)i); /* "i" as the event's userdata */
 
 						ELOG_DISPATCHER_DEBUG("added readable event into waitset, i:%d fd:%d", i, fd);
 						break;
 
 					case PGRES_POLLING_WRITING:
-						AddWaitEventToSet(gang_waitset, WL_SOCKET_WRITEABLE, fd, NULL,
+						AddWaitEventToSet(DispWaitSet, WL_SOCKET_WRITEABLE, fd, NULL,
 							(void *)(long)i); /* "i" as the event's userdata */
 
 						ELOG_DISPATCHER_DEBUG("added writable event into waitset, i:%d fd:%d", i, fd);
@@ -285,8 +284,6 @@ create_gang_retry:
 				allStatusDone &= connStatusDone[i];
 			if (allStatusDone)
 			{
-				FreeWaitEventSet(gang_waitset);
-				gang_waitset = NULL;
 				break;
 			}
 
@@ -295,10 +292,8 @@ create_gang_retry:
 			CHECK_FOR_INTERRUPTS();
 
 			/* Wait until something happens */
-			int nready = WaitEventSetWait(gang_waitset, poll_timeout, revents, size, WAIT_EVENT_GANG_ASSIGN);
+			int nready = WaitEventSetWait(DispWaitSet, poll_timeout, revents, size, WAIT_EVENT_GANG_ASSIGN);
 			Assert(nready >= 0);
-			FreeWaitEventSet(gang_waitset);
-			gang_waitset = NULL;
 
 			if (nready == 0)
 			{
@@ -355,9 +350,6 @@ create_gang_retry:
 	}
 	PG_CATCH();
 	{
-		if (gang_waitset != NULL)
-			FreeWaitEventSet(gang_waitset);
-
 		FtsNotifyProber();
 		/* FTS shows some segment DBs are down */
 		if (FtsTestSegmentDBIsDown(newGangDefinition->db_descriptors, size))
