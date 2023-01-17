@@ -198,14 +198,8 @@ create_gang_retry:
 								errdetail("timeout expired\n (%s)", segdbDesc->whoami)));
 
 			/*
-			 * GPDB_12_MERGE_FIXME: create and destroy waiteventset in each loop
-			 * may impact the performance, please see:
-			 * https://github.com/greenplum-db/gpdb/pull/13494#discussion_r874243725
-			 * Let's verify it later.
-			 */
-			/*
 			 * Since the set of FDs can change when we call PQconnectPoll() below,
-			 * create a new wait event set to poll on for every loop iteration.
+			 * we must init WaitEventSet to poll on for every loop iteration.
 			 */
 			initDispatchWaitEventSet(size);
 

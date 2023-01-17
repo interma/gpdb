@@ -129,10 +129,6 @@ static void dispatchCommand(CdbDispatchResult *dispatchResult,
 
 static void checkDispatchResult(CdbDispatcherState *ds, int timeout_sec);
 
-static void checkDispatchResultLoop(CdbDispatcherState *ds, int timeout_sec, WaitEventSet *waitset);
-
-static void cdbdisp_waitDispatchFinishLoop_async(struct CdbDispatcherState *ds, WaitEventSet *waitset);
-
 static bool processResults(CdbDispatchResult *dispatchResult);
 
 static void
@@ -218,26 +214,10 @@ cdbdisp_waitDispatchFinish_async(struct CdbDispatcherState *ds)
 {
 	CdbDispatchCmdAsync *pParms = (CdbDispatchCmdAsync *) ds->dispatchParams;
 	int				dispatchCount = pParms->dispatchCount;
-	initDispatchWaitEventSet(dispatchCount);
-	/* Use PG_TRY() - PG_CATCH() to make sure destroy the waiteventset (close the epoll fd) */
-	PG_TRY();
-	{
-		cdbdisp_waitDispatchFinishLoop_async(ds, DispWaitSet);
-	}
-	PG_CATCH();
-	{
-		PG_RE_THROW();
-	}
-	PG_END_TRY();
-}
-
-static void
-cdbdisp_waitDispatchFinishLoop_async(struct CdbDispatcherState *ds, WaitEventSet *waitset)
-{
 	const static int DISPATCH_POLL_TIMEOUT = 500;
 	int			i;
-	CdbDispatchCmdAsync *pParms = (CdbDispatchCmdAsync *) ds->dispatchParams;
-	int			dispatchCount = pParms->dispatchCount;
+
+	initDispatchWaitEventSet(dispatchCount);
 
 	WaitEvent 		*revents = palloc(sizeof(WaitEvent) * dispatchCount);
 	int 			*added = palloc0(sizeof(int) * dispatchCount);
@@ -272,7 +252,7 @@ cdbdisp_waitDispatchFinishLoop_async(struct CdbDispatcherState *ds, WaitEventSet
 				{
 					int 	sock = PQsocket(conn);
 					Assert(sock >= 0);
-					AddWaitEventToSet(waitset, WL_SOCKET_WRITEABLE, sock, NULL, NULL);
+					AddWaitEventToSet(DispWaitSet, WL_SOCKET_WRITEABLE, sock, NULL, NULL);
 					added[i] = 1;
 				}
 
@@ -298,7 +278,7 @@ cdbdisp_waitDispatchFinishLoop_async(struct CdbDispatcherState *ds, WaitEventSet
 		{
 			CHECK_FOR_INTERRUPTS();
 
-			pollRet = WaitEventSetWait(waitset, DISPATCH_POLL_TIMEOUT, revents, dispatchCount, WAIT_EVENT_DISP_FINISH);
+			pollRet = WaitEventSetWait(DispWaitSet, DISPATCH_POLL_TIMEOUT, revents, dispatchCount, WAIT_EVENT_DISP_FINISH);
 			Assert(pollRet >= 0);
 			if (pollRet == 0)
 				ELOG_DISPATCHER_DEBUG("cdbdisp_waitDispatchFinish_async(): Dispatch poll timeout after %d ms", DISPATCH_POLL_TIMEOUT);
@@ -461,24 +441,6 @@ cdbdisp_makeDispatchParams_async(int maxSlices, int largestGangSize, char *query
 static void
 checkDispatchResult(CdbDispatcherState *ds, int timeout_sec)
 {
-	CdbDispatchCmdAsync *pParms = (CdbDispatchCmdAsync *) ds->dispatchParams;
-
-	initDispatchWaitEventSet(pParms->dispatchCount);
-	/* Use PG_TRY() - PG_CATCH() to make sure destroy the waiteventset (close the epoll fd) */
-	PG_TRY();
-	{
-		checkDispatchResultLoop(ds, timeout_sec, DispWaitSet);
-	}
-	PG_CATCH();
-	{
-		PG_RE_THROW();
-	}
-	PG_END_TRY();
-}
-
-static void
-checkDispatchResultLoop(CdbDispatcherState *ds, int timeout_sec, WaitEventSet *waitset)
-{
 	int			i;
 	int			timeout = 0;
 	bool		sentSignal = false;
@@ -492,6 +454,7 @@ checkDispatchResultLoop(CdbDispatcherState *ds, int timeout_sec, WaitEventSet *w
 	CdbDispatchResult *dispatchResult;
 
 	int 	db_count = pParms->dispatchCount;
+	initDispatchWaitEventSet(db_count);
 	int 	*added = palloc0(db_count * sizeof(int));
 	WaitEvent *revents = palloc(sizeof(WaitEvent) * db_count);
 
@@ -616,7 +579,7 @@ checkDispatchResultLoop(CdbDispatcherState *ds, int timeout_sec, WaitEventSet *w
 				int 	sock = PQsocket(conn);
 				long 	ev_userdata = i; /* the index "i" as the event's userdata */
 				Assert(sock >= 0);
-				AddWaitEventToSet(waitset, WL_SOCKET_READABLE, sock, NULL, (void *)ev_userdata);
+				AddWaitEventToSet(DispWaitSet, WL_SOCKET_READABLE, sock, NULL, (void *)ev_userdata);
 				added[i] = 1;
 			}
 			nfds++;
@@ -646,7 +609,7 @@ checkDispatchResultLoop(CdbDispatcherState *ds, int timeout_sec, WaitEventSet *w
 		else
 			timeout = DISPATCH_WAIT_CANCEL_TIMEOUT_MSEC;
 
-		n = WaitEventSetWait(waitset, timeout, revents, db_count, WAIT_EVENT_DISP_RESULT);
+		n = WaitEventSetWait(DispWaitSet, timeout, revents, db_count, WAIT_EVENT_DISP_RESULT);
 
 		/*
 		 * poll returns with an error, including one due to an interrupted
