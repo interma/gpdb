@@ -662,6 +662,16 @@ ic_proxy_client_on_hello_pkt(void *opaque, const void *data, uint16 size)
 	ICProxyKey	key;
 	ICProxyPkt *ackpkt;
 
+	/* sanity check: drop the packet with invalid magic number */
+	if (pkt->magicNumber != IC_PROXY_PKT_MAGIC_NUMBER)
+	{
+		elogif(gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG, DEBUG1,
+			"ic-proxy: %s: received %s, dropping an invalid package (magicnumber %u != %u)",
+					ic_proxy_client_get_name(client), ic_proxy_pkt_to_str(pkt),
+					pkt->magicNumber, IC_PROXY_PKT_MAGIC_NUMBER);
+		return;
+	}
+
 	/* we only expect one HELLO message */
 	uv_read_stop((uv_stream_t *) &client->pipe);
 
@@ -1179,6 +1189,16 @@ void
 ic_proxy_client_on_p2c_data(ICProxyClient *client, ICProxyPkt *pkt,
 							ic_proxy_sent_cb callback, void *opaque)
 {
+	/* sanity check: drop the packet with invalid magic number */
+	if (pkt->magicNumber != IC_PROXY_PKT_MAGIC_NUMBER)
+	{
+		elogif(gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG, DEBUG1,
+			"ic-proxy: %s: received %s, dropping an invalid package (magicnumber %u != %u)",
+					ic_proxy_client_get_name(client), ic_proxy_pkt_to_str(pkt),
+					pkt->magicNumber, IC_PROXY_PKT_MAGIC_NUMBER);
+		return;
+	}
+
 	/* A placeholder does not send any packets, it always cache them */
 	if (client->state & IC_PROXY_CLIENT_STATE_PLACEHOLDER)
 	{
@@ -1259,6 +1279,7 @@ ic_proxy_client_cache_p2c_pkt(ICProxyClient *client, ICProxyPkt *pkt)
 	/* TODO: drop out-of-date pkt directly */
 	/* TODO: verify the pkt is to client */
 
+	Assert(pkt->magicNumber == IC_PROXY_PKT_MAGIC_NUMBER);
 	client->pkts = lappend(client->pkts, pkt);
 
 	elogif(gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG, DEBUG3,

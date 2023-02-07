@@ -82,6 +82,7 @@ void
 ic_proxy_message_init(ICProxyPkt *pkt, ICProxyMessageType type,
 					  const ICProxyKey *key)
 {
+	pkt->magicNumber = IC_PROXY_PKT_MAGIC_NUMBER;
 	pkt->type = type;
 	pkt->len = sizeof(*pkt);
 

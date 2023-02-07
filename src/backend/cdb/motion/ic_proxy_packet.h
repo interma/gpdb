@@ -22,6 +22,7 @@ typedef struct ICProxyPkt ICProxyPkt;
 #include "ic_proxy_key.h"
 
 #define IC_PROXY_MAX_PKT_SIZE (Gp_max_packet_size + sizeof(ICProxyPkt))
+#define IC_PROXY_PKT_MAGIC_NUMBER (0xBA0BABEE)
 
 typedef enum
 {
@@ -41,6 +42,9 @@ typedef enum
 
 struct ICProxyPkt
 {
+	/* for the sanity check of package */
+	uint32		magicNumber;
+
 	uint16		len;
 	uint16		type;
 

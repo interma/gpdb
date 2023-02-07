@@ -202,6 +202,7 @@ void
 ic_proxy_router_route(uv_loop_t *loop, ICProxyPkt *pkt,
 					  ic_proxy_sent_cb callback, void *opaque)
 {
+	Assert(pkt->magicNumber == IC_PROXY_PKT_MAGIC_NUMBER);
 	if (pkt->dstDbid == pkt->srcDbid)
 	{
 		/*
@@ -253,6 +254,8 @@ ic_proxy_router_on_write(uv_write_t *req, int status)
 {
 	ICProxyWriteReq *wreq = (ICProxyWriteReq *) req;
 	ICProxyPkt *pkt = req->data;
+
+	Assert(pkt->magicNumber == IC_PROXY_PKT_MAGIC_NUMBER);
 
 	if (status < 0)
 	{
