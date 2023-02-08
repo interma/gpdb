@@ -181,13 +181,12 @@ ic_proxy_backend_on_read_hello_ack(uv_stream_t *stream, ssize_t nread, const uv_
 	/* we have received a complete HELLO ACK message */
 	pkt = (ICProxyPkt *)backend->buffer;
 
-	/* sanity check: drop the packet with invalid magic number */
-	if (pkt->magicNumber != IC_PROXY_PKT_MAGIC_NUMBER)
+	/* sanity check: drop the packet with incorrect magic number */
+	if (!ic_proxy_pkt_is_correct_magicnumber(pkt))
 	{
 		elogif(gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG, DEBUG1,
-			"ic-proxy: backend %s: received %s, dropping an invalid package (magicnumber %u != %u)",
-					ic_proxy_key_to_str(&backend->key), ic_proxy_pkt_to_str(pkt),
-					pkt->magicNumber, IC_PROXY_PKT_MAGIC_NUMBER);
+			"ic-proxy: backend %s: received %s, dropping the invalid package (magic number mismatch)",
+					ic_proxy_key_to_str(&backend->key), ic_proxy_pkt_to_str(pkt));
 		return;
 	}
 

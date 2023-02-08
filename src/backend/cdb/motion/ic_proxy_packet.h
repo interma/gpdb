@@ -101,4 +101,11 @@ ic_proxy_pkt_is(const ICProxyPkt *pkt, ICProxyMessageType type)
 	return type == pkt->type;
 }
 
+static inline bool
+ic_proxy_pkt_is_correct_magicnumber(const ICProxyPkt *pkt)
+{
+	Assert(pkt);
+	return pkt->magicNumber == IC_PROXY_PKT_MAGIC_NUMBER;
+}
+
 #endif   /* IC_PROXY_PACKET_H */
