@@ -619,7 +619,8 @@ CreateWaitEventSet(MemoryContext context, int nevents)
 }
 
 /*
- * Reset a existed WaitEventSet
+ * If *pset == NULL create a new WaitEventSet and set it to *pset
+ * Else reset the existed WaitEventSet:
  *  - if enable epoll, it frees the old memory and reuse the epoll object.
  *  - else it just Free+Create a new WaitEventSet.
  *
@@ -633,7 +634,10 @@ void
 ResetWaitEventSet(WaitEventSet **pset, MemoryContext context, int nevents)
 {
 	if (*pset == NULL)
+	{
+		*pset = CreateWaitEventSet(context, nevents);
 		return;
+	}
 
 #if defined(WAIT_USE_EPOLL)
 	WaitEventSet *set = *pset;
@@ -667,23 +671,23 @@ ResetWaitEventSet(WaitEventSet **pset, MemoryContext context, int nevents)
 	data = (char *) MemoryContextAllocZero(context, sz);
 
 	/* reuse the epoll object and free the old memory */
-	int	bak_epoll_fd = set->epoll_fd;
+	int	old_epoll_fd = set->epoll_fd;
 	pfree(set);
 
-	*pset = (WaitEventSet *) data;
-	set = *pset;
+	set = (WaitEventSet *) data;
 	data += MAXALIGN(sizeof(WaitEventSet));
 	set->events = (WaitEvent *) data;
 	data += MAXALIGN(sizeof(WaitEvent) * nevents);
 	set->epoll_ret_events = (struct epoll_event *) data;
-	data += MAXALIGN(sizeof(struct epoll_event) * nevents);
 
 	set->latch = NULL;
 	set->nevents_space = nevents;
 	set->exit_on_postmaster_death = false;
 
 	/* reuse the epoll object (is empty now) */
-	set->epoll_fd = bak_epoll_fd;
+	set->epoll_fd = old_epoll_fd;
+
+	*pset = set;
 	return;
 #endif
 CREATE_NEW_EV:

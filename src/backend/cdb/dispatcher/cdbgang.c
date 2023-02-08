@@ -98,23 +98,6 @@ cdbgang_createGang(List *segments, SegmentType segmentType)
 }
 
 /*
- * init DispWaitSet: create it in the first time and reset it later
- */
-void
-initDispatchWaitEventSet(int nevents)
-{
-	/*
-	 * its lifecycle is in the whole QD process,
-	 * so alloc it in the TopMemoryContext (rather than DispatcherContext)
-	 */
-	MemoryContext context = TopMemoryContext;
-	if (DispWaitSet == NULL)
-		DispWaitSet = CreateWaitEventSet(context, nevents);
-	else
-		ResetWaitEventSet(&DispWaitSet, context, nevents);
-}
-
-/*
  * Creates a new gang by logging on a session to each segDB involved.
  *
  * elog ERROR or return a non-NULL gang.

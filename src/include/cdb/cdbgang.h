@@ -66,8 +66,6 @@ extern WaitEventSet *DispWaitSet;
 extern Gang *
 cdbgang_createGang(List *segments, SegmentType segmentType);
 
-extern void initDispatchWaitEventSet(int nevents);
-
 extern const char *gangTypeToString(GangType type);
 
 extern void setupCdbProcessList(ExecSlice *slice);

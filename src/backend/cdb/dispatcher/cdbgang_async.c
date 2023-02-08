@@ -201,7 +201,7 @@ create_gang_retry:
 			 * Since the set of FDs can change when we call PQconnectPoll() below,
 			 * we must init WaitEventSet to poll on for every loop iteration.
 			 */
-			initDispatchWaitEventSet(size);
+			ResetWaitEventSet(&DispWaitSet, TopMemoryContext, size);
 
 			for (i = 0; i < size; i++)
 			{

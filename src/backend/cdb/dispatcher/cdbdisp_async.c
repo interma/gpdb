@@ -217,7 +217,11 @@ cdbdisp_waitDispatchFinish_async(struct CdbDispatcherState *ds)
 	const static int DISPATCH_POLL_TIMEOUT = 500;
 	int			i;
 
-	initDispatchWaitEventSet(dispatchCount);
+	/*
+	 * DispWaitSet's lifecycle is in the whole QD process,
+	 * so alloc it in the TopMemoryContext (rather than DispatcherContext)
+	 */
+	ResetWaitEventSet(&DispWaitSet, TopMemoryContext, dispatchCount);
 
 	WaitEvent 		*revents = palloc(sizeof(WaitEvent) * dispatchCount);
 	int 			*added = palloc0(sizeof(int) * dispatchCount);
@@ -454,7 +458,7 @@ checkDispatchResult(CdbDispatcherState *ds, int timeout_sec)
 	CdbDispatchResult *dispatchResult;
 
 	int 	db_count = pParms->dispatchCount;
-	initDispatchWaitEventSet(db_count);
+	ResetWaitEventSet(&DispWaitSet, TopMemoryContext, db_count);
 	int 	*added = palloc0(db_count * sizeof(int));
 	WaitEvent *revents = palloc(sizeof(WaitEvent) * db_count);
 
