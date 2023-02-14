@@ -22,7 +22,7 @@ typedef struct ICProxyPkt ICProxyPkt;
 #include "ic_proxy_key.h"
 
 #define IC_PROXY_MAX_PKT_SIZE (Gp_max_packet_size + sizeof(ICProxyPkt))
-#define IC_PROXY_PKT_MAGIC_NUMBER (0xBA0BABEE)
+#define IC_PROXY_PKT_MAGIC_NUMBER (0xBADDCAFE)
 
 typedef enum
 {
@@ -101,8 +101,9 @@ ic_proxy_pkt_is(const ICProxyPkt *pkt, ICProxyMessageType type)
 	return type == pkt->type;
 }
 
+/* check the validity of a package by magicNumber */
 static inline bool
-ic_proxy_pkt_is_correct_magicnumber(const ICProxyPkt *pkt)
+ic_proxy_pkt_is_valid(const ICProxyPkt *pkt)
 {
 	Assert(pkt);
 	return pkt->magicNumber == IC_PROXY_PKT_MAGIC_NUMBER;

@@ -182,7 +182,7 @@ ic_proxy_backend_on_read_hello_ack(uv_stream_t *stream, ssize_t nread, const uv_
 	pkt = (ICProxyPkt *)backend->buffer;
 
 	/* sanity check: drop the packet with incorrect magic number */
-	if (!ic_proxy_pkt_is_correct_magicnumber(pkt))
+	if (!ic_proxy_pkt_is_valid(pkt))
 	{
 		elogif(gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG, DEBUG1,
 			"ic-proxy: backend %s: received %s, dropping the invalid package (magic number mismatch)",

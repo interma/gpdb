@@ -291,7 +291,7 @@ ic_proxy_peer_on_data_pkt(void *opaque, const void *data, uint16 size)
 		   "ic-proxy: %s: received %s", peer->name, ic_proxy_pkt_to_str(pkt));
 
 	/* sanity check: drop the packet with incorrect magic number */
-	if (!ic_proxy_pkt_is_correct_magicnumber(pkt))
+	if (!ic_proxy_pkt_is_valid(pkt))
 	{
 		elogif(gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG, DEBUG1,
 			"ic-proxy: %s: received %s, dropping the invalid package (magic number mismatch)",
@@ -539,7 +539,7 @@ ic_proxy_peer_on_hello_pkt(void *opaque, const void *data, uint16 size)
 	ICProxyKey	key;
 
 	/* sanity check: drop the packet with incorrect magic number */
-	if (!ic_proxy_pkt_is_correct_magicnumber(pkt))
+	if (!ic_proxy_pkt_is_valid(pkt))
 	{
 		elogif(gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG, DEBUG1,
 			"ic-proxy: %s: received %s, dropping the invalid package (magic number mismatch)",
@@ -655,7 +655,7 @@ ic_proxy_peer_on_hello_ack_pkt(void *opaque, const void *data, uint16 size)
 					 peer->name, size);
 
 	/* sanity check: drop the packet with incorrect magic number */
-	if (!ic_proxy_pkt_is_correct_magicnumber(pkt))
+	if (!ic_proxy_pkt_is_valid(pkt))
 	{
 		elogif(gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG, DEBUG1,
 			"ic-proxy: %s: received %s, dropping the invalid package (magic number mismatch)",

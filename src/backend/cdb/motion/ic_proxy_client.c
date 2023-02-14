@@ -663,7 +663,7 @@ ic_proxy_client_on_hello_pkt(void *opaque, const void *data, uint16 size)
 	ICProxyPkt *ackpkt;
 
 	/* sanity check: drop the packet with incorrect magic number */
-	if (!ic_proxy_pkt_is_correct_magicnumber(pkt))
+	if (!ic_proxy_pkt_is_valid(pkt))
 	{
 		elogif(gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG, DEBUG1,
 			"ic-proxy: %s: received %s, dropping the invalid package (magic number mismatch)",
@@ -1189,7 +1189,7 @@ ic_proxy_client_on_p2c_data(ICProxyClient *client, ICProxyPkt *pkt,
 							ic_proxy_sent_cb callback, void *opaque)
 {
 	/* sanity check: drop the packet with incorrect magic number */
-	if (!ic_proxy_pkt_is_correct_magicnumber(pkt))
+	if (!ic_proxy_pkt_is_valid(pkt))
 	{
 		elogif(gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG, DEBUG1,
 			"ic-proxy: %s: received %s, dropping the invalid package (magic number mismatch)",
@@ -1277,7 +1277,7 @@ ic_proxy_client_cache_p2c_pkt(ICProxyClient *client, ICProxyPkt *pkt)
 	/* TODO: drop out-of-date pkt directly */
 	/* TODO: verify the pkt is to client */
 
-	Assert(ic_proxy_pkt_is_correct_magicnumber(pkt));
+	Assert(ic_proxy_pkt_is_valid(pkt));
 
 	client->pkts = lappend(client->pkts, pkt);
 
