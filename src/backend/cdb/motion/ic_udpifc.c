@@ -4277,6 +4277,17 @@ handleAcks(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 		n = recvfrom(pEntry->txfd, (char *) pkt, MIN_PACKET_SIZE, 0,
 					 (struct sockaddr *) &peer, &peerlen);
 
+		/* inject the ACK of EOS is lost */
+#ifdef FAULT_INJECTOR
+		if (pEntry->sendingEos &&
+			pkt->sendSliceIndex == 2 && pkt->recvSliceIndex == 1 &&
+			FaultInjector_InjectFaultIfSet("interconnect_ackofeos_is_lost",
+											DDLNotSpecified,
+											"" /* databaseName */ ,
+											"" /* tableName */ ) == FaultInjectorTypeSkip)
+			break;
+#endif
+
 		if (n < 0)
 		{
 			if (errno == EWOULDBLOCK)	/* had nothing to read. */
@@ -4465,6 +4476,8 @@ handleAcks(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 					  pkt->sessionId, gp_session_id,
 					  pkt->icId, sliceTbl->ic_instance_id);
 	}
+	Assert(false);
+	return ret;
 }
 
 /*
