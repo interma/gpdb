@@ -3078,6 +3078,8 @@ SetupUDPIFCInterconnect_Internal(EState *estate)
 				conn->pkt_q_tail = 0;
 
 				SIMPLE_FAULT_INJECTOR(InterconnectSetupPalloc);
+				// interma assert here
+				Assert(CurrentMemoryContext != ErrorContext);
 				conn->pkt_q = (uint8 **) palloc0(conn->pkt_q_capacity * sizeof(uint8 *));
 
 				/* update the max buffer count of our rx buffer pool.  */
