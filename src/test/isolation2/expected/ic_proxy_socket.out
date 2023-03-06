@@ -16,7 +16,7 @@ CREATE
 -----------------------
                        
 (1 row)
--- the query hang here before adding magic number field in the ICProxyPkt
+-- the query hung here before the commit adding the magic number field in the ICProxyPkt
 -- reason: random bytes cause icproxy OOM or hang forever
 1: SET statement_timeout = 10000;
 SET

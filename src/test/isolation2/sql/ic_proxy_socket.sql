@@ -42,7 +42,7 @@ $$ LANGUAGE plpythonu EXECUTE ON MASTER;
 
 1: create table PR_14998(i int);
 1: SELECT send_bytes_to_icproxy();
--- the query hang here before adding magic number field in the ICProxyPkt
+-- the query hung here before the commit adding the magic number field in the ICProxyPkt
 -- reason: random bytes cause icproxy OOM or hang forever
 1: SET statement_timeout = 10000;
 1: select count(*) from PR_14998;
