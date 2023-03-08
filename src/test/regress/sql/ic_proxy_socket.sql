@@ -5,7 +5,7 @@ CREATE OR REPLACE LANGUAGE plpython3u;
 
 CREATE OR REPLACE FUNCTION send_bytes_to_icproxy()
     RETURNS VOID as $$
-import socket, struct
+import socket, struct, random
 
 # parse host and port from gp_interconnect_proxy_addresses
 icproxy_host = ""
@@ -25,17 +25,27 @@ except:
 if icproxy_host == "":
     return
 
-ranstr="fSSAtMbxAzOhkTcpPwvXQq9Y45vfnTiOdo3Mk9V8QKLKWyd8SHBI59FsDRLWFqMZkFpwosqZEIkua3YfR4C8GZ6n6J4SEYCJcdamjhg2e9e1Ns7kNnnUa7OeRyKSEhIANBfau3tsT1SIR4LnXXOAxMBWJkBLtMDKHQyljfa7iQKa1H0bLBP3gOqX8jshoLE7lksNsvmngfpsGtBmKswFNwdLxR1SiMU7kDfU6gCtmLVbCScImf5AVLMosFExTmX3QdiExuuwST6mNZKS7ZdTzsaKbOSy00EWerm39vW8g305H1jrRNSNZvpRkkE2Hv3Abe9ilXZ5hNsWe0DN1i884iPDmxX0B8T8l3SL4P2NInMmcpuQCNVc4ivE7KgLkFafsKrs1igvyRjLraJcjgk88BOkMoVxSE8plK8JoQGDJylg80WFlPBfgm4vjQjRuh8E9MF0M2Ws5GKiDxQ8RcoEEvmHS6ef76kFjai0A10PRkrOPXjNaCJD7jdRPFjkbr3EyhMGNOKMJxXLaUtzuDpz0Ivc0bH9SXffughI61rzChnt71dS15rpTHm6RHodlkwUHfY0H21I3F2uj7qELJR1kb8A5rfYDf0yv8pyDpCeTxT9WjaDlP1DPT74kXZEuIcIfX2H7RvSR89n3W2DJbdgXD9WSz3DknotAzWdY1iNe7qP6hwGJLkxx0ICBD9JaanCwlL4whB1DmtfZqFARsatXPcgVQIYKquJepNoVdVTwSYTb6XBLEGFTn4S6lJXkpyOB9M6egiYIvMYt1HHgDANFmXLslpB3TIYgc3kgGZ2SKI3sjuYghv0TODOLzFZoH9OuLnDkQVXk4a17xpRgl8pal6geryP6sPGA8XHpi0a6gdnqmGiaTQY84EHeykTcgR6K37UVZm9u8Go1xyjqnHjUtcb0BVZg5uY7MUd6ciMAbvXKh837oNpsbkC27qfPawd3W9Bz0aUhxB9st3EksZSmv6b8sRTyEBOT5zwMP7A"
-# send the random bytes
-s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-s.connect((icproxy_host, icproxy_port))
-val = struct.pack('!i', 134591) # an invalid magic number
-s.send(val)
-message = ranstr.encode('utf-8')
-val = struct.pack('!i', len(message))
-s.send(val)
-s.sendall(message)
-s.close()
+def ranstr(num):
+    H = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+    salt = ''
+    for i in range(num):
+        salt += random.choice(H)
+    return salt
+
+for i in range(10):
+    # send the random bytes
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.connect((icproxy_host, icproxy_port))
+    val = struct.pack('!i', 134591) # an invalid magic number
+    s.send(val)
+
+    message_len = random.randint(100, 10000)
+    message = ranstr(message_len).encode('utf-8')
+    val = struct.pack('!i', message_len)
+    s.send(val)
+    s.sendall(message)
+    s.close()
+
 $$ LANGUAGE plpython3u;
 
 create table PR_14998(i int);
