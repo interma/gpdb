@@ -37,6 +37,7 @@
 #include "utils/rangetypes.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
+#include "utils/faultinjector.h"
 
 /*
  * When a tuple is received on the motion receiver, the typmod of RECORDOID
@@ -257,6 +258,8 @@ TRHandleTypeLists(TupleRemapper *remapper, List *typelist)
 		if (!remapper->remap_needed && local_typmod != remote_typmod)
 			remapper->remap_needed = true;
 	}
+
+	SIMPLE_FAULT_INJECTOR("handled_typmodmap");
 }
 
 
