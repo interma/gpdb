@@ -38,12 +38,15 @@ server closed the connection unexpectedly
 	before or while processing the request.
 1<:  <... completed>
 FAILED:  Execution failed
+-- cleanup
 2:select gp_inject_fault_infinite('handled_typmodmap', 'reset', 1);
  gp_inject_fault_infinite 
 --------------------------
  Success:                 
 (1 row)
 2:drop table tbl_pr15340;
+DROP
+2:drop type if exists myudt;
 DROP
 2<:  <... completed>
 FAILED:  Execution failed

@@ -25,6 +25,8 @@ CREATE EXTENSION IF NOT EXISTS gp_inject_fault;
 1:select gp_inject_fault_infinite('handled_typmodmap', 'fatal', 1);
 1:select row((1,'a')::myudt), row((2,'b')::myudt, 2) from tbl_pr15340;
 1<:
+-- cleanup
 2:select gp_inject_fault_infinite('handled_typmodmap', 'reset', 1);
 2:drop table tbl_pr15340;
+2:drop type if exists myudt;
 2<:

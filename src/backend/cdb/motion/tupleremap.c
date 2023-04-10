@@ -122,7 +122,7 @@ struct TupleRemapInfo
  */
 struct TupleRemapper
 {
-	MemoryContext mycontext;	/* context containing TupleRemapper */
+	MemoryContext mycontext;	/* context containing TupleRemapper (with typmodmap and field_remapinfo) */
 	int32	   *typmodmap;		/* typmod map from remote to local */
 	int			typmodmapsize;	/* size of typmodmap */
 	TupleDesc	tupledesc;		/* current top-level tuple descriptor */
@@ -225,6 +225,7 @@ TRHandleTypeLists(TupleRemapper *remapper, List *typelist)
 	ListCell   *cell;
 	int			mapsize = remapper->typmodmapsize + list_length(typelist);
 
+	/* alloc typmodmap in remapper->mycontext, usually it's InterconnectContext */
 	MemoryContext oldcontext = MemoryContextSwitchTo(remapper->mycontext);
 	if (remapper->typmodmap)
 		remapper->typmodmap = repalloc(remapper->typmodmap, mapsize * sizeof(int32));
