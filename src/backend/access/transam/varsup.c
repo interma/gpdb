@@ -38,6 +38,7 @@
 /* pointer to "variable cache" in shared memory (set up by shmem.c) */
 VariableCache ShmemVariableCache = NULL;
 
+int JJ_xid=0;
 int xid_stop_limit;
 int xid_warn_limit;
 
@@ -191,6 +192,11 @@ GetNewTransactionId(bool isSubXact)
 	 *
 	 * Extend pg_subtrans and pg_commit_ts too.
 	 */
+	{
+	int		incr;
+	for (incr=0; incr <=JJ_xid; incr++)
+	{
+	xid = XidFromFullTransactionId(ShmemVariableCache->nextFullXid);
 	ExtendCLOG(xid);
 	ExtendCommitTs(xid);
 	ExtendSUBTRANS(xid);
@@ -203,6 +209,12 @@ GetNewTransactionId(bool isSubXact)
 	 * assign more XIDs until there is CLOG space for them.
 	 */
 	FullTransactionIdAdvance(&ShmemVariableCache->nextFullXid);
+	/* If JJ_xid opposes xidStopLimit, the latter wins */
+	if (TransactionIdFollowsOrEquals(XidFromFullTransactionId(ShmemVariableCache->nextFullXid),
+									 ShmemVariableCache->xidStopLimit))
+		break;
+	}
+	}
 
 	/*
 	 * To aid testing, you can set the debug_burn_xids GUC, to consume XIDs

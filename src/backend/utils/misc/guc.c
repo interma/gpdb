@@ -127,6 +127,7 @@
 /* XXX these should appear in other modules' header files */
 extern bool Log_disconnections;
 extern int	CommitDelay;
+extern int	JJ_xid;
 extern int	CommitSiblings;
 extern char *default_tablespace;
 extern char *temp_tablespaces;
@@ -2782,6 +2783,15 @@ static struct config_int ConfigureNamesInt[] =
 		&CommitDelay,
 		0, 0, 100000,
 		NULL, NULL, NULL
+	},
+
+ 	{
+		{"JJ_xid", PGC_USERSET, WAL_SETTINGS,
+			gettext_noop("Skip this many xid every time we acquire one"),
+			NULL
+		},
+		&JJ_xid,
+		0, 0, 1000000, NULL, NULL
 	},
 
 	{
