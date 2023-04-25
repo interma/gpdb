@@ -110,7 +110,6 @@
 		"jit_optimize_above_cost",
 		"jit_profiling_support",
 		"jit_tuple_deforming",
-		"JJ_xid",
 		"lc_messages",
 		"lc_monetary",
 		"lc_numeric",
