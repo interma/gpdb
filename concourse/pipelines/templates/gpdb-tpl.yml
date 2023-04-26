@@ -226,7 +226,7 @@ groups:
   - icw_planner_icproxy_[[ os_type ]]
   - icw_planner_ictcp_[[ os_type ]]
   - icw_mirrorless_[[ os_type ]]
-  {% if os_type == "centos6" or os_type == "centos7" or os_type == "rhel8" or os_type == "ubuntu20.04" %}
+  {% if os_type == "centos6" or os_type == "centos7" or os_type == "rhel8" %}
   - scram-sha-256_abi_test_server_[[ os_type ]]
   - scram-sha-256_abi_test_clients_[[ os_type ]]
   {% endif %}
