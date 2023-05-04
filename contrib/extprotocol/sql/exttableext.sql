@@ -1278,8 +1278,8 @@ validatorfunc = url_validator
     create role demoprot_nopriv with login ;
 
 -- start_matchsubs
--- m/^ERROR:  internal error: demoprot called with a different protocol (demoprot_new) .*$/
--- s/^ERROR:  internal error: demoprot called with a different protocol (demoprot_new) .*$/ERROR:  internal error: demoprot called with a different protocol (demoprot_new)/
+-- m/^ERROR:  internal error: demoprot called with a different protocol (demoprot_new).*/
+-- s/^ERROR:  internal error: demoprot called with a different protocol (demoprot_new).*/ERROR:  internal error: demoprot called with a different protocol (demoprot_new)/
 -- end_matchsubs
 -- start_matchsubs
 -- m/line \d+ of file/
