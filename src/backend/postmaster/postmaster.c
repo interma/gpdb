@@ -2705,6 +2705,17 @@ retry1:
 	 */
 	MemoryContextSwitchTo(oldcontext);
 
+#ifdef FAULT_INJECTOR
+	if (FaultInjector_InjectFaultIfSet(
+		"postmaster_recovery_in_progress",
+		DDLNotSpecified,
+		"" /* databaseName */,
+		"postmaster_in_recovery") == FaultInjectorTypeSkip)
+		{
+			port->canAcceptConnections = CAC_RECOVERY;
+		}
+#endif
+
 	/*
 	 * If we're going to reject the connection due to database state, say so
 	 * now instead of wasting cycles on an authentication exchange. (This also

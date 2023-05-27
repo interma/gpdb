@@ -156,6 +156,7 @@ bool		gp_create_table_random_default_distribution = true;
 bool		gp_allow_non_uniform_partitioning_ddl = true;
 bool		gp_print_create_gang_time = false;
 int			dtx_phase2_retry_second = 0;
+int			dtx_phase2_recovery_retry_second = 0;
 
 bool gp_log_suboverflow_statement = false;
 
@@ -4142,6 +4143,18 @@ struct config_int ConfigureNamesInt_gp[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"dtx_phase2_recovery_retry_second", PGC_SUSET, GP_ARRAY_TUNING,
+			gettext_noop("Maximum time for which coordinator tries to finish a prepared transaction when segments are in recovery/reset state"),
+			gettext_noop("The timer is for recovery state, so it's bigger than dtx_phase2_retry_second."
+						 " Coordinator keeps retrying the finish-prepared operation"
+						 " until this timeout (seconds)."),
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_UNIT_S
+		},
+		&dtx_phase2_recovery_retry_second,
+		900, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
 
 	{
 		/* Can't be set in postgresql.conf */

@@ -89,6 +89,7 @@
 		"default_with_oids",
 		"disable_cost",
 		"dtx_phase2_retry_second",
+		"dtx_phase2_recovery_retry_second",
 		"dynamic_library_path",
 		"dynamic_shared_memory_type",
 		"effective_cache_size",
