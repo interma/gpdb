@@ -58,6 +58,8 @@
 #include "pgtime.h"
 #include <netinet/in.h>
 
+#define INTERMA_LOG_TAG "interma-ic-tag "
+
 #ifdef WIN32
 #define WIN32_LEAN_AND_MEAN
 #ifndef _WIN32_WINNT
@@ -1800,6 +1802,11 @@ sendControlMessage(icpkthdr *pkt, int fd, struct sockaddr *addr, socklen_t peerL
 	if (gp_interconnect_full_crc)
 		addCRC(pkt);
 
+	// @interma 构造持续丢失包，导致conn->capacity==0阻塞MS发送
+	//if (pkt->seq > 4)
+	//	return;
+
+	logPkt(INTERMA_LOG_TAG "Receiver SendControlMessage ", pkt);
 	n = sendto(fd, (const char *) pkt, pkt->len, 0, addr, peerLen);
 
 	/*
@@ -1952,6 +1959,9 @@ putRxBufferAndSendAck(MotionConn *conn, AckSendParam *param)
 #ifdef AMS_VERBOSE_LOGGING
 	elog(LOG, "putRxBufferAndSendAck conn %p pkt [seq %d] for node %d route %d, [head seq] %d queue size %d, queue head %d queue tail %d", conn, seq, buf->motNodeId, conn->route, conn->conn_info.seq - conn->pkt_q_size, conn->pkt_q_size, conn->pkt_q_head, conn->pkt_q_tail);
 #endif
+
+	elog(LOG, INTERMA_LOG_TAG "Receiver putRxBufferAndSendAck [extraSeq %d] motionid %d route %d q_size %d", 
+		seq, buf->motNodeId, conn->route, conn->pkt_q_size);
 
 	putRxBufferToFreeList(&rx_buffer_pool, buf);
 
@@ -4140,19 +4150,17 @@ aggregateStatistics(ChunkTransportStateEntry *pEntry)
 static inline void
 logPkt(char *prefix, icpkthdr *pkt)
 {
-	write_log("%s [%s: seq %d extraSeq %d]: motNodeId %d, crc %d len %d "
+	write_log("%s [%s: seq %d extraSeq %d]: motNodeId %d len %d "
 			  "srcContentId %d dstDesContentId %d "
-			  "srcPid %d dstPid %d "
-			  "srcListenerPort %d dstListernerPort %d "
 			  "sendSliceIndex %d recvSliceIndex %d "
+			  "srcListenerPort %d dstListernerPort %d "
 			  "sessionId %d icId %d "
 			  "flags %d ",
 			  prefix, pkt->flags & UDPIC_FLAGS_RECEIVER_TO_SENDER ? "ACK" : "DATA",
-			  pkt->seq, pkt->extraSeq, pkt->motNodeId, pkt->crc, pkt->len,
+			  pkt->seq, pkt->extraSeq, pkt->motNodeId, pkt->len,
 			  pkt->srcContentId, pkt->dstContentId,
-			  pkt->srcPid, pkt->dstPid,
-			  pkt->srcListenerPort, pkt->dstListenerPort,
 			  pkt->sendSliceIndex, pkt->recvSliceIndex,
+			  pkt->srcListenerPort, pkt->dstListenerPort,
 			  pkt->sessionId, pkt->icId,
 			  pkt->flags);
 }
@@ -4250,6 +4258,9 @@ handleAckedPacket(MotionConn *ackConn, ICBuffer *buf, uint64 now)
 
 	icBufferListAppend(&snd_buffer_pool.freeList, buf);
 
+	write_log(INTERMA_LOG_TAG "Sender REMOVEPKT seq[%d] from unack queue for route %d (retry %d) sndbufmaxcount %d sndbufcount %d sndbuffreelistlen %d, sntSeq %d consumedSeq %d recvAckSeq %d capacity %d, sndQ %d, unackQ %d", 
+		buf->pkt->seq, ackConn->route, buf->nRetry, snd_buffer_pool.maxCount, snd_buffer_pool.count, icBufferListLength(&snd_buffer_pool.freeList), buf->conn->sentSeq, buf->conn->consumedSeq, buf->conn->receivedAckSeq, buf->conn->capacity, icBufferListLength(&buf->conn->sndQueue), icBufferListLength(&buf->conn->unackQueue));
+	
 #ifdef AMS_VERBOSE_LOGGING
 	write_log("REMOVEPKT %d from unack queue for route %d (retry %d) sndbufmaxcount %d sndbufcount %d sndbuffreelistlen %d, sntSeq %d consumedSeq %d recvAckSeq %d capacity %d, sndQ %d, unackQ %d", buf->pkt->seq, ackConn->route, buf->nRetry, snd_buffer_pool.maxCount, snd_buffer_pool.count, icBufferListLength(&snd_buffer_pool.freeList), buf->conn->sentSeq, buf->conn->consumedSeq, buf->conn->receivedAckSeq, buf->conn->capacity, icBufferListLength(&buf->conn->sndQueue), icBufferListLength(&buf->conn->unackQueue));
 	if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
@@ -4377,15 +4388,20 @@ handleAcks(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 			{
 				if (pkt->flags & UDPIC_FLAGS_CAPACITY)
 				{
+					logPkt(INTERMA_LOG_TAG "Sender got ACK[capacity]", pkt);
 					if (pkt->extraSeq > ackConn->consumedSeq)
 					{
 						ackConn->capacity += pkt->extraSeq - ackConn->consumedSeq;
 						ackConn->consumedSeq = pkt->extraSeq;
 						shouldSendBuffers = true;
+				
 					}
+					write_log(INTERMA_LOG_TAG "Sender set capacity[%d] consumedSeq[%d] srcContentId %d dstDesContentId %d", 
+						ackConn->capacity, ackConn->consumedSeq, pkt->srcContentId, pkt->dstContentId);
 				}
 				else if (pkt->flags & UDPIC_FLAGS_DUPLICATE)
 				{
+					logPkt(INTERMA_LOG_TAG "Sender got ACK[duplicate]", pkt);
 					if (DEBUG1 >= log_min_messages)
 						write_log("GOTDUPACK [seq %d] from route %d; srcpid %d dstpid %d cmd %d flags 0x%x connseq %d", pkt->seq, ackConn->route, pkt->srcPid, pkt->dstPid, pkt->icId, pkt->flags, ackConn->conn_info.seq);
 
@@ -4394,6 +4410,7 @@ handleAcks(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 				}
 				else if (pkt->flags & UDPIC_FLAGS_DISORDER)
 				{
+					logPkt(INTERMA_LOG_TAG "Sender got ACK[disorder]", pkt);
 					if (DEBUG1 >= log_min_messages)
 						write_log("GOTDISORDER [seq %d] from route %d; srcpid %d dstpid %d cmd %d flags 0x%x connseq %d", pkt->seq, ackConn->route, pkt->srcPid, pkt->dstPid, pkt->icId, pkt->flags, ackConn->conn_info.seq);
 
@@ -4408,6 +4425,7 @@ handleAcks(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 				 */
 				if (pkt->seq < ackConn->receivedAckSeq)
 				{
+					logPkt(INTERMA_LOG_TAG "Sender got ACK[bad-seq]", pkt);
 					if (DEBUG1 >= log_min_messages)
 						write_log("ack with bad seq?! expected (%d, %d] got %d flags 0x%x, capacity %d consumedSeq %d", ackConn->receivedAckSeq, ackConn->sentSeq, pkt->seq, pkt->flags, ackConn->capacity, ackConn->consumedSeq);
 					break;
@@ -4416,6 +4434,7 @@ handleAcks(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 				/* haven't gotten a stop request, maybe this is one ? */
 				if ((pkt->flags & UDPIC_FLAGS_STOP) && !ackConn->stopRequested && ackConn->stillActive)
 				{
+					logPkt(INTERMA_LOG_TAG "Sender got ACK[stop]", pkt);
 #ifdef AMS_VERBOSE_LOGGING
 					elog(LOG, "got ack with stop; srcpid %d dstpid %d cmd %d flags 0x%x pktseq %d connseq %d", pkt->srcPid, pkt->dstPid, pkt->icId, pkt->flags, pkt->seq, ackConn->conn_info.seq);
 #endif
@@ -4427,6 +4446,7 @@ handleAcks(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 
 				if (pkt->seq == ackConn->receivedAckSeq)
 				{
+					logPkt(INTERMA_LOG_TAG "Sender got ACK[bad seq]", pkt);
 					if (DEBUG1 >= log_min_messages)
 						write_log("ack with bad seq?! expected (%d, %d] got %d flags 0x%x, capacity %d consumedSeq %d", ackConn->receivedAckSeq, ackConn->sentSeq, pkt->seq, pkt->flags, ackConn->capacity, ackConn->consumedSeq);
 					break;
@@ -4443,6 +4463,7 @@ handleAcks(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 					write_log("GOTACK [seq %d] from route %d; srcpid %d dstpid %d cmd %d flags 0x%x connseq %d", pkt->seq, ackConn->route, pkt->srcPid, pkt->dstPid, pkt->icId, pkt->flags, ackConn->conn_info.seq);
 #endif
 
+					logPkt(INTERMA_LOG_TAG "Sender got ACK", pkt);
 					link = icBufferListFirst(&ackConn->unackQueue);
 					buf = GET_ICBUFFER_FROM_PRIMARY(link);
 
@@ -4778,6 +4799,7 @@ sendBuffers(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEnt
 		sendOnce(transportStates, pEntry, buf, conn);
 		ic_statistics.sndPktNum++;
 
+		logPkt(INTERMA_LOG_TAG "Sender SENT icpkt", buf->pkt);
 #ifdef AMS_VERBOSE_LOGGING
 		logPkt("SEND PKT DETAIL", buf->pkt);
 #endif
@@ -5901,6 +5923,8 @@ handleDataPacket(MotionConn *conn, icpkthdr *pkt, struct sockaddr_storage *peer,
 
 	if ((pkt->len == sizeof(icpkthdr)) && (pkt->flags & UDPIC_FLAGS_CAPACITY))
 	{
+		write_log(INTERMA_LOG_TAG "Receiver status queuy message received, seq %d, srcpid %d, dstpid %d, icid %d, sid %d", pkt->seq, pkt->srcPid, pkt->dstPid, pkt->icId, pkt->sessionId);
+
 		if (DEBUG1 >= log_min_messages)
 			write_log("status queuy message received, seq %d, srcpid %d, dstpid %d, icid %d, sid %d", pkt->seq, pkt->srcPid, pkt->dstPid, pkt->icId, pkt->sessionId);
 
@@ -6317,6 +6341,8 @@ rxThreadFunc(void *arg)
 
 			if (conn != NULL)
 			{
+				logPkt(INTERMA_LOG_TAG "Receiver GOT icpkt", pkt);
+				// logPkt(INTERMA_LOG_TAG "\t->Conn", &conn->conn_info);
 				/* Handling a regular packet */
 				if (handleDataPacket(conn, pkt, &peer, &peerlen, &param, &wakeup_mainthread))
 					pkt = NULL;
@@ -6334,6 +6360,7 @@ rxThreadFunc(void *arg)
 				 */
 				if ((pkt->flags & UDPIC_FLAGS_RECEIVER_TO_SENDER) == 0)
 				{
+					write_log(INTERMA_LOG_TAG "Receiver mismatched packet received");
 					if (DEBUG1 >= log_min_messages)
 						write_log("mismatched packet received, seq %d, srcpid %d, dstpid %d, icid %d, sid %d", pkt->seq, pkt->srcPid, pkt->dstPid, pkt->icId, pkt->sessionId);
 
