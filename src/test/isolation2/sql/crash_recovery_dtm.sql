@@ -247,34 +247,3 @@ FROM gp_segment_configuration g1 where role = 'p';
 20: SELECT gp_inject_fault_infinite('after_orphaned_check', 'reset', dbid)
    from gp_segment_configuration where role = 'p' and content = -1;
 20: DROP TABLE test_retry_abort;
-
--- Test for dtx_phase2_recovery_retry_second: it notices the recovery state of segments
-
--- create test table
-21: create table postmaster_in_recovery(i int);
-
--- skip fts probe
-21: select gp_inject_fault_infinite('fts_probe', 'skip', 1);
-21: select gp_request_fts_probe_scan();
-21: select gp_wait_until_triggered_fault('fts_probe', 1, 1);
-
--- QD pauses at dtm_broadcast_commit_prepared
-21: select gp_inject_fault_infinite('dtm_broadcast_commit_prepared', 'skip', dbid) from gp_segment_configuration where role = 'p' and content = -1;
-21: select gp_inject_fault_infinite('dtm_broadcast_commit_prepared_loop', 'suspend', dbid) from gp_segment_configuration where role = 'p' and content = -1;
-21: set client_min_messages to warning;
-21&: insert into postmaster_in_recovery select generate_series(1,10);
-
--- inject recovery fault at segment1 and resume QD
-22: select gp_inject_fault('postmaster_recovery_in_progress', 'skip', '', '', '', 1,10,0, dbid) from gp_segment_configuration where role = 'p' and content = 1;
-22: select gp_inject_fault_infinite('dtm_broadcast_commit_prepared_loop', 'resume', dbid) from gp_segment_configuration where role = 'p' and content = -1;
-21<:
-
--- cleanup
-22: select gp_inject_fault_infinite('dtm_broadcast_commit_prepared', 'reset', dbid) from gp_segment_configuration where role = 'p' and content = -1;
-22: select gp_inject_fault_infinite('dtm_broadcast_commit_prepared_loop', 'reset', dbid) from gp_segment_configuration where role = 'p' and content = -1;
-22: select gp_inject_fault_infinite('postmaster_recovery_in_progress', 'reset', dbid) from gp_segment_configuration where role = 'p' and content = 1;
-22: select gp_inject_fault('fts_probe', 'reset', 1);
-22: drop table postmaster_in_recovery;
-
--- grep desired message in log
-! master_datadir=$(psql -At -c "select datadir from gp_segment_configuration where content = -1 and role = 'p'" postgres) && ls -rt $master_datadir/log/gpdb* | tail -1 | xargs -i grep "It keeps retrying until" {} | awk -F '"WARNING","01000",' '{print $2}' | awk -F ',,,,,0' '{print $1}';

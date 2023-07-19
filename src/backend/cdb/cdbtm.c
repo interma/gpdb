@@ -544,19 +544,13 @@ doNotifyingCommitPrepared(void)
 	time_t		retry_time_start;
 	bool		retry_timedout;
 	int         timeout_second;
-	bool		skip_first_dispatch = false;
 
 	elog(DTM_DEBUG5, "doNotifyingCommitPrepared entering in state = %s", DtxStateToString(MyTmGxactLocal->state));
 
 	Assert(MyTmGxactLocal->state == DTX_STATE_INSERTED_COMMITTED);
 	setCurrentDtxState(DTX_STATE_NOTIFYING_COMMIT_PREPARED);
 
-#ifdef FAULT_INJECTOR
-	if (SIMPLE_FAULT_INJECTOR("dtm_broadcast_commit_prepared") == FaultInjectorTypeSkip)
-	{
-		skip_first_dispatch = true;
-	}
-#endif
+	SIMPLE_FAULT_INJECTOR("dtm_broadcast_commit_prepared");
 
 	/*
 	 * Acquire TwophaseCommitLock in shared mode to block any GPDB restore
@@ -570,10 +564,7 @@ doNotifyingCommitPrepared(void)
 	Assert(MyTmGxactLocal->dtxSegments != NIL);
 	PG_TRY();
 	{
-		if (skip_first_dispatch)
-			succeeded = false; /* it only for the test: crash_recovery_dtm */
-		else
-			succeeded = currentDtxDispatchProtocolCommand(DTX_PROTOCOL_COMMAND_COMMIT_PREPARED, true);
+		succeeded = currentDtxDispatchProtocolCommand(DTX_PROTOCOL_COMMAND_COMMIT_PREPARED, true);
 	}
 	PG_CATCH();
 	{
@@ -599,12 +590,12 @@ doNotifyingCommitPrepared(void)
 		setDistributedTransactionContext(DTX_CONTEXT_QD_RETRY_PHASE_2);
 	}
 
-	retry_timedout = (dtx_phase2_retry_second == 0) ? true : false;
+	timeout_second = dtx_phase2_retry_second;
+	retry_timedout = (timeout_second == 0) ? true : false;
 	retry_time_start = time(NULL);
 
 	while (!succeeded && !retry_timedout)
 	{
-		timeout_second = dtx_phase2_retry_second;
 		retry++;
 		/*
 		 * Sleep for some time before retry to avoid too many reries for some
@@ -626,9 +617,6 @@ doNotifyingCommitPrepared(void)
 		elog(NOTICE, "Releasing segworker group to retry broadcast.");
 		ResetAllGangs();
 
-		// pause here
-		SIMPLE_FAULT_INJECTOR("dtm_broadcast_commit_prepared_loop");
-
 		savedInterruptHoldoffCount = InterruptHoldoffCount;
 		PG_TRY();
 		{
@@ -647,11 +635,10 @@ doNotifyingCommitPrepared(void)
 				/*
 				 * let's wait longer time when segments are in recovery/reset
 				 */
-				if (timeout_second < dtx_phase2_recovery_retry_second)
-					timeout_second = dtx_phase2_recovery_retry_second;
+				timeout_second = dtx_phase2_recovery_retry_second;
 				ereport(WARNING,
-						(errmsg("Segments are in recovery/reset in the distributed transaction 'Commit Prepared' broadcast"), 
-						errhint("It keeps retrying until successfully or reaching dtx_phase2_recovery_retry_second.")));
+					(errmsg("segments are in recovery/reset in the distributed transaction 'Commit Prepared' broadcast "
+					 "detail:%s", errdata->detail), TM_ERRDETAIL));
 			}
 
 			InterruptHoldoffCount = savedInterruptHoldoffCount;
@@ -696,12 +683,12 @@ retryAbortPrepared(void)
 	bool		retry_timedout;
 	int         timeout_second;
 
-	retry_timedout = (dtx_phase2_retry_second == 0) ? true : false;
+	timeout_second = dtx_phase2_retry_second;
+	retry_timedout = (timeout_second == 0) ? true : false;
 	retry_time_start = time(NULL);
 
 	while (!succeeded && !retry_timedout)
 	{
-		timeout_second = dtx_phase2_retry_second;
 		retry++;
 		/*
 		 * By deallocating the gang, we will force a new gang to connect to
@@ -746,11 +733,10 @@ retryAbortPrepared(void)
 				/*
 				 * let's wait longer time when segments are in recovery/reset
 				 */
-				if (timeout_second < dtx_phase2_recovery_retry_second)
-					timeout_second = dtx_phase2_recovery_retry_second;
+				timeout_second = dtx_phase2_recovery_retry_second;
 				ereport(WARNING,
-						(errmsg("Segments are in recovery/reset in the distributed transaction 'Commit Prepared' broadcast"), 
-						errhint("It keeps retrying until successfully or reaching dtx_phase2_recovery_retry_second.")));
+					(errmsg("segments are in recovery/reset in the distributed transaction 'Abort' broadcast "
+					 "detail:%s", errdata->detail), TM_ERRDETAIL));
 			}
 
 			InterruptHoldoffCount = savedInterruptHoldoffCount;
