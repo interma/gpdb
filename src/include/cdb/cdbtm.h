@@ -18,8 +18,6 @@
 #endif
 #include "nodes/plannodes.h"
 
-#define SEG_RECOVERY_SUFFIX_STRING "in reset/recovery mode"
-
 struct Gang;
 
 /**

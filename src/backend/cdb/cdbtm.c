@@ -543,7 +543,6 @@ doNotifyingCommitPrepared(void)
 	MemoryContext oldcontext = CurrentMemoryContext;;
 	time_t		retry_time_start;
 	bool		retry_timedout;
-	int         timeout_second;
 
 	elog(DTM_DEBUG5, "doNotifyingCommitPrepared entering in state = %s", DtxStateToString(MyTmGxactLocal->state));
 
@@ -590,8 +589,7 @@ doNotifyingCommitPrepared(void)
 		setDistributedTransactionContext(DTX_CONTEXT_QD_RETRY_PHASE_2);
 	}
 
-	timeout_second = dtx_phase2_retry_second;
-	retry_timedout = (timeout_second == 0) ? true : false;
+	retry_timedout = (dtx_phase2_retry_second == 0) ? true : false;
 	retry_time_start = time(NULL);
 
 	while (!succeeded && !retry_timedout)
@@ -628,26 +626,13 @@ doNotifyingCommitPrepared(void)
 			 * restore the previous value, which is reset to 0 in errfinish.
 			 */
 			MemoryContextSwitchTo(oldcontext);
-
-			ErrorData  *errdata = CopyErrorData();
-			if (errdata->detail != NULL && strstr(errdata->detail, _(SEG_RECOVERY_SUFFIX_STRING)))
-			{
-				/*
-				 * let's wait longer time when segments are in recovery/reset
-				 */
-				timeout_second = dtx_phase2_recovery_retry_second;
-				ereport(WARNING,
-					(errmsg("segments are in recovery/reset in the distributed transaction 'Commit Prepared' broadcast "
-					 "detail:%s", errdata->detail), TM_ERRDETAIL));
-			}
-
 			InterruptHoldoffCount = savedInterruptHoldoffCount;
 			succeeded = false;
 			FlushErrorState();
 		}
 		PG_END_TRY();
 
-		if ((time(NULL) - retry_time_start) > timeout_second)
+		if ((time(NULL) - retry_time_start) > dtx_phase2_retry_second)
 			retry_timedout = true;
 	}
 
@@ -681,10 +666,8 @@ retryAbortPrepared(void)
 	MemoryContext oldcontext = CurrentMemoryContext;;
 	time_t 		retry_time_start;
 	bool		retry_timedout;
-	int         timeout_second;
 
-	timeout_second = dtx_phase2_retry_second;
-	retry_timedout = (timeout_second == 0) ? true : false;
+	retry_timedout = (dtx_phase2_retry_second == 0) ? true : false;
 	retry_time_start = time(NULL);
 
 	while (!succeeded && !retry_timedout)
@@ -726,26 +709,13 @@ retryAbortPrepared(void)
 			 * restore the previous value, which is reset to 0 in errfinish.
 			 */
 			MemoryContextSwitchTo(oldcontext);
-
-			ErrorData  *errdata = CopyErrorData();
-			if (errdata->detail != NULL && strstr(errdata->detail, _(SEG_RECOVERY_SUFFIX_STRING)))
-			{
-				/*
-				 * let's wait longer time when segments are in recovery/reset
-				 */
-				timeout_second = dtx_phase2_recovery_retry_second;
-				ereport(WARNING,
-					(errmsg("segments are in recovery/reset in the distributed transaction 'Abort' broadcast "
-					 "detail:%s", errdata->detail), TM_ERRDETAIL));
-			}
-
 			InterruptHoldoffCount = savedInterruptHoldoffCount;
 			succeeded = false;
 			FlushErrorState();
 		}
 		PG_END_TRY();
 
-		if ((time(NULL) - retry_time_start) > timeout_second)
+		if ((time(NULL) - retry_time_start) > dtx_phase2_retry_second)
 			retry_timedout = true;
 	}
 
