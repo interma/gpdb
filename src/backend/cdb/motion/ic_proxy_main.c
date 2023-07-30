@@ -402,8 +402,13 @@ ic_proxy_server_ensure_peers(uv_loop_t *loop)
 		 * be connected, the ic_proxy_peer_connect() function will take care of
 		 * the state.
 		 */
-		peer = ic_proxy_peer_blessed_lookup(loop, addr->content, addr->dbid);
-		ic_proxy_peer_connect(peer, (struct sockaddr_in *) addr);
+		bool tcp_inited = false;
+		peer = ic_proxy_peer_blessed_lookup(loop, addr->content, addr->dbid, &tcp_inited);
+		/*
+		 * if peer->tcp has been already inited in ic_proxy_peer_blessed_lookup(),
+		 * make sure don't init it again in ic_proxy_peer_connect()
+		 */
+		ic_proxy_peer_connect(peer, (struct sockaddr_in *) addr, !tcp_inited /* if need init tcp */);
 	}
 }
 
@@ -473,6 +478,17 @@ ic_proxy_server_on_timer(uv_timer_t *timer)
 }
 
 /*
+ * callback function for uv_walk(), to close all handles
+ */
+static void
+ensure_closing_walker(uv_handle_t *handle, void *arg)
+{
+	if (!uv_is_closing(handle)) {
+		uv_close(handle, NULL);
+	}
+}
+
+/*
  * Signal handler.
  *
  * Signals are handled via the signalfd() call in libuv, so this is a normal
@@ -527,6 +543,7 @@ int
 ic_proxy_server_main(void)
 {
 	char		path[MAXPGPATH];
+	int			ret;
 
 	elogif(gp_log_interconnect >= GPVARS_VERBOSITY_TERSE,
 		   LOG, "ic-proxy: server setting up");
@@ -580,16 +597,42 @@ ic_proxy_server_main(void)
 	 */
 	ic_proxy_server_exit_code = 1;
 	uv_run(&ic_proxy_server_loop, UV_RUN_DEFAULT);
-	uv_loop_close(&ic_proxy_server_loop);
+	ret = uv_loop_close(&ic_proxy_server_loop);
+	if (ret != 0)
+	{
+		/*
+		* followed the cleanup pattern:
+		* https://github.com/libuv/libuv/discussions/3342#discussioncomment-1539021
+		*/
+		if (ret == UV_EBUSY) /* means stil have active handles which need to close */
+		{
+			/* to close all handles */
+			uv_walk(&ic_proxy_server_loop, ensure_closing_walker, NULL);
+
+			int retry = 5; /* just in case: prevent infinite loop */
+			do {
+				ret = uv_run(&ic_proxy_server_loop, UV_RUN_ONCE);
+				retry--;
+				pg_usleep(1000000L); /* 1 second */
+			} while(ret != 0 && retry >= 0);
+
+			/* close again: all handles should have been closed now */
+			ret = uv_loop_close(&ic_proxy_server_loop);
+			Assert(ret == 0);
+		}
+		else{
+			elog(WARNING, "ic-proxy: uv_loop_close() failed, return: %d", ret);
+		}
+	}
 
 	elogif(gp_log_interconnect >= GPVARS_VERBOSITY_TERSE, LOG, "ic-proxy: server closing");
 
 	ic_proxy_client_table_uninit();
-	ic_proxy_peer_table_uninit();
+	ic_proxy_peer_table_uninit(); /* nothing to do now */
 	ic_proxy_router_uninit();
 
+	/* unlink the domain socket file */
 	ic_proxy_build_server_sock_path(path, sizeof(path));
-
 	elogif(gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG, LOG, "unlink(%s) ...", path);
 	unlink(path);
 
@@ -598,54 +641,5 @@ ic_proxy_server_main(void)
 	elogif(gp_log_interconnect >= GPVARS_VERBOSITY_TERSE, LOG,
 		   "ic-proxy: server closed with code %d",
 				 ic_proxy_server_exit_code);
-
-	ic_proxy_server_quit(&ic_proxy_server_loop, true);
 	return ic_proxy_server_exit_code;
-}
-
-void
-ic_proxy_server_quit(uv_loop_t *loop, bool relaunch)
-{
-	elogif(gp_log_interconnect >= GPVARS_VERBOSITY_TERSE, LOG,
-		   "ic-proxy: server quiting");
-
-	if (relaunch)
-		/* return non-zero value so we are restarted by the postmaster */
-		ic_proxy_server_exit_code = 1;
-	else
-		ic_proxy_server_exit_code = 0;
-
-	/*
-	 * we can't close the loop directly, we need to properly shutdown all the
-	 * clients first.
-	 */
-	if (ic_proxy_peer_listening)
-	{
-		/* cancel pending relistening request */
-		ic_proxy_peer_relistening = false;
-
-		uv_unref((uv_handle_t *) &ic_proxy_peer_listener);
-		uv_close((uv_handle_t *) &ic_proxy_peer_listener, NULL);
-	}
-	if (ic_proxy_client_listening)
-	{
-		uv_unref((uv_handle_t *) &ic_proxy_client_listener);
-		uv_close((uv_handle_t *) &ic_proxy_client_listener, NULL);
-	}
-	uv_timer_stop(&ic_proxy_server_timer);
-	uv_unref((uv_handle_t *) &ic_proxy_server_signal_hup);
-	uv_unref((uv_handle_t *) &ic_proxy_server_signal_term);
-	uv_unref((uv_handle_t *) &ic_proxy_server_signal_stop);
-
-#if 0
-	uv_client_table_disconnect_all();
-#endif
-
-	/*
-	 * do not close the loop directly, it will quit automatically after all the
-	 * clients are closed.
-	 */
-#if 0
-	uv_loop_close(loop);
-#endif
 }

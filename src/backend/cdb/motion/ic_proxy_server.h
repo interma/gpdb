@@ -104,7 +104,6 @@ struct ICProxyDelay
 
 
 extern int ic_proxy_server_main(void);
-extern void ic_proxy_server_quit(uv_loop_t *loop, bool relaunch);
 
 extern ICProxyClient *ic_proxy_client_new(uv_loop_t *loop, bool placeholder);
 extern const char *ic_proxy_client_get_name(ICProxyClient *client);
@@ -126,13 +125,15 @@ extern ICProxyPeer *ic_proxy_peer_new(uv_loop_t *loop,
 									  int16 content, uint16 dbid);
 extern void ic_proxy_peer_free(ICProxyPeer *peer);
 extern void ic_proxy_peer_read_hello(ICProxyPeer *peer);
-extern void ic_proxy_peer_connect(ICProxyPeer *peer, struct sockaddr_in *dest);
+extern void ic_proxy_peer_connect(ICProxyPeer *peer, struct sockaddr_in *dest,
+								  bool init_tcp);
 extern void ic_proxy_peer_disconnect(ICProxyPeer *peer);
 extern void ic_proxy_peer_route_data(ICProxyPeer *peer, ICProxyPkt *pkt,
 									 ic_proxy_sent_cb callback, void *opaque);
 extern ICProxyPeer *ic_proxy_peer_lookup(int16 content, uint16 dbid);
 extern ICProxyPeer *ic_proxy_peer_blessed_lookup(uv_loop_t *loop,
-												 int16 content, uint16 dbid);
+												 int16 content, uint16 dbid,
+												 bool *tcp_inited);
 extern ICProxyDelay *ic_proxy_peer_build_delay(ICProxyPeer *peer,
 											   ICProxyPkt *pkt,
 											   ic_proxy_sent_cb callback,

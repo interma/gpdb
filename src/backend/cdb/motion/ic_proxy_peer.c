@@ -264,20 +264,25 @@ ic_proxy_peer_lookup(int16 content, uint16 dbid)
 
 /*
  * Lookup a peer with peerid, create a placeholder if not found.
+ * @param[out] tcp_inited
+ * 	if peer->tcp has been already inited in the function
  */
 ICProxyPeer *
-ic_proxy_peer_blessed_lookup(uv_loop_t *loop, int16 content, uint16 dbid)
+ic_proxy_peer_blessed_lookup(uv_loop_t *loop, int16 content, uint16 dbid, bool *tcp_inited)
 {
 	Assert(dbid > 0);
-
+	bool _tcp_inited = false;
 	if (!ic_proxy_peers[dbid])
 	{
 		ICProxyPeer *peer = ic_proxy_peer_new(loop, content, dbid);
+		_tcp_inited = true;
 
 		/* register as a placeholder */
 		ic_proxy_peer_register(peer);
 	}
 
+	if (tcp_inited != NULL)
+		*tcp_inited = _tcp_inited;
 	return ic_proxy_peers[dbid];
 }
 
@@ -839,7 +844,7 @@ ic_proxy_peer_on_connected(uv_connect_t *conn, int status)
  * Connect to a remote peer.
  */
 void
-ic_proxy_peer_connect(ICProxyPeer *peer, struct sockaddr_in *dest)
+ic_proxy_peer_connect(ICProxyPeer *peer, struct sockaddr_in *dest, bool init_tcp)
 {
 	uv_connect_t *conn;
 	char		name[HOST_NAME_MAX];
@@ -854,9 +859,12 @@ ic_proxy_peer_connect(ICProxyPeer *peer, struct sockaddr_in *dest)
 		   "ic-proxy: %s: connecting to %s:%d",
 				 peer->name, name, ntohs(dest->sin_port));
 
-	/* reinit the tcp handle */
-	uv_tcp_init(peer->tcp.loop, &peer->tcp);
-	uv_tcp_nodelay(&peer->tcp, true);
+	/* (re)init the tcp handle */
+	if (init_tcp)
+	{
+		uv_tcp_init(peer->tcp.loop, &peer->tcp);
+		uv_tcp_nodelay(&peer->tcp, true);
+	}
 
 	conn = ic_proxy_new(uv_connect_t);
 
