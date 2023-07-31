@@ -44,6 +44,8 @@ static uv_pipe_t	ic_proxy_client_listener;
 static bool			ic_proxy_client_listening;
 
 static int			ic_proxy_server_exit_code = 1;
+/* for the immediate stop mode */
+static bool 		ic_proxy_immediate_stop = false;
 
 /* pipe to check whether postmaster is alive */
 static uv_pipe_t	ic_proxy_postmaster_pipe;
@@ -98,7 +100,7 @@ ic_proxy_server_on_new_peer(uv_stream_t *server, int status)
 	{
 		elog(WARNING, "ic-proxy: failed to accept new peer: %s",
 					 uv_strerror(ret));
-		ic_proxy_peer_free(peer);
+		ic_proxy_peer_close_free(peer);
 		return;
 	}
 
@@ -189,7 +191,6 @@ ic_proxy_server_peer_listener_init(uv_loop_t *loop)
 	 */
 	uv_tcp_init(loop, listener);
 	uv_tcp_nodelay(listener, true);
-
 	ret = uv_tcp_bind(listener, (struct sockaddr *) &addr->sockaddr, 0);
 	if (ret < 0)
 	{
@@ -513,6 +514,9 @@ ic_proxy_server_on_signal(uv_signal_t *handle, int signum)
 	}
 	else
 	{
+		/* got the immediate stop mode */
+		if (signum == SIGQUIT)
+			ic_proxy_immediate_stop = true;
 		uv_stop(handle->loop);
 	}
 }
@@ -598,14 +602,21 @@ ic_proxy_server_main(void)
 	ic_proxy_server_exit_code = 1;
 	uv_run(&ic_proxy_server_loop, UV_RUN_DEFAULT);
 	ret = uv_loop_close(&ic_proxy_server_loop);
-	if (ret != 0)
+
+	/*
+	 * We don't want to take much time in immediate stop mode:
+	 * since the proxy worker will quit soon, it's ok not to stop libuv's handles.
+	 */
+	if (ret != 0 && !ic_proxy_immediate_stop)
 	{
 		/*
-		* followed the cleanup pattern:
+		* followed the official cleanup pattern:
 		* https://github.com/libuv/libuv/discussions/3342#discussioncomment-1539021
 		*/
-		if (ret == UV_EBUSY) /* means stil have active handles which need to close */
+		if (ret == UV_EBUSY) /* means still have active handles which need to close */
 		{
+			if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
+				uv_print_all_handles(&ic_proxy_server_loop, stderr);
 			/* to close all handles */
 			uv_walk(&ic_proxy_server_loop, ensure_closing_walker, NULL);
 
@@ -625,15 +636,13 @@ ic_proxy_server_main(void)
 		}
 	}
 
-	elogif(gp_log_interconnect >= GPVARS_VERBOSITY_TERSE, LOG, "ic-proxy: server closing");
-
 	ic_proxy_client_table_uninit();
 	ic_proxy_peer_table_uninit(); /* nothing to do now */
 	ic_proxy_router_uninit();
 
 	/* unlink the domain socket file */
 	ic_proxy_build_server_sock_path(path, sizeof(path));
-	elogif(gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG, LOG, "unlink(%s) ...", path);
+	elogif(gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG, DEBUG1, "unlink(%s) ...", path);
 	unlink(path);
 
 	ic_proxy_pkt_cache_uninit();

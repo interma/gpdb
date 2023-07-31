@@ -55,6 +55,9 @@ struct ICProxyPeer
 #define IC_PROXY_PEER_STATE_CLOSING                     0x00004000
 #define IC_PROXY_PEER_STATE_CLOSED                      0x00008000
 
+#define IC_PROXY_PEER_STATE_NEED_CLOSE(peer) \
+	(peer->state < IC_PROXY_PEER_STATE_SHUTTING)
+
 #define IC_PROXY_PEER_STATE_READY_FOR_MESSAGE \
 	(IC_PROXY_PEER_STATE_CONNECTED | \
 	 IC_PROXY_PEER_STATE_ACCEPTED)
@@ -117,6 +120,7 @@ extern ICProxyClient *ic_proxy_client_blessed_lookup(uv_loop_t *loop,
 extern void ic_proxy_client_table_init(void);
 extern void ic_proxy_client_table_uninit(void);
 extern void ic_proxy_client_table_shutdown_by_dbid(uint16 dbid);
+extern void ic_proxy_client_close_free(ICProxyClient *client);
 
 extern void ic_proxy_peer_table_init(void);
 extern void ic_proxy_peer_table_uninit(void);
@@ -124,6 +128,7 @@ extern void ic_proxy_peer_table_uninit(void);
 extern ICProxyPeer *ic_proxy_peer_new(uv_loop_t *loop,
 									  int16 content, uint16 dbid);
 extern void ic_proxy_peer_free(ICProxyPeer *peer);
+extern void ic_proxy_peer_close_free(ICProxyPeer *peer);
 extern void ic_proxy_peer_read_hello(ICProxyPeer *peer);
 extern void ic_proxy_peer_connect(ICProxyPeer *peer, struct sockaddr_in *dest,
 								  bool init_tcp);
