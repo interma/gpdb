@@ -34,6 +34,7 @@ select restart_primary_segments_containing_data_for('unlogged_heap_table_manager
 
 -- force a clean stop and recovery:
 -- start_ignore
+select pg_sleep(5);
 select clean_restart_primary_segments_containing_data_for('unlogged_heap_table_managers');
 -- end_ignore
 
