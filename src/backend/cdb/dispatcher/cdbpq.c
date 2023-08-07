@@ -41,6 +41,10 @@ PQsendGpQuery_shared(PGconn *conn, char *shared_query, int query_len, bool nonbl
 	/* remember we are using simple query protocol */
 	conn->queryclass = PGQUERY_SIMPLE;
 
+	if (conn->Pfdebug)
+		fprintf(conn->Pfdebug, "To backend> PQsendGpQuery_shared %c, length %d\n",
+				conn->outBuffer[0], query_len);
+
 	/*
 	 * Give the data a push.  In nonblock mode, don't complain if we're unable
 	 * to send it all; PQgetResult() will do any additional flushing needed.

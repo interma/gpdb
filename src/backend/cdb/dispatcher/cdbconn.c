@@ -278,6 +278,12 @@ cdbconn_doConnectStart(SegmentDatabaseDescriptor *segdbDesc,
 	Assert(nkeywords < MAX_KEYWORDS);
 
 	segdbDesc->conn = PQconnectStartParams(keywords, values, false);
+	// @(interma) show more logs
+	if (segdbDesc->segindex == 2)
+	{
+		FILE *debug = fopen("/tmp/trace_pq.out","w");
+		PQtrace(segdbDesc->conn, debug);
+	}
 	return;
 }
 
