@@ -34,6 +34,7 @@
 #include "cdb/cdbvars.h"
 #include "cdb/ml_ipc.h"
 #include "executor/execdesc.h"
+#include "storage/shmem.h"
 
 #include "ic_proxy.h"
 #include "ic_proxy_backend.h"
@@ -515,6 +516,28 @@ ic_proxy_backend_init_context(ChunkTransportState *state)
 	uv_timer_init(&context->loop, &context->connectTimer);
 	uv_timer_start(&context->connectTimer, ic_proxy_backend_on_connect_timer, 0, CONNECT_TIMER_TIMEOUT);
 	uv_unref((uv_handle_t *)&context->connectTimer);
+}
+
+/*
+ * Check if current segment's IC_PROXY listener failed
+ */
+bool
+ic_proxy_backend_check_listener_failed(void)
+{
+	bool found;
+	ic_proxy_peer_listener_failed = ShmemInitStruct("IC_PROXY Listener Failure Flag",
+											sizeof(*ic_proxy_peer_listener_failed),
+											&found);
+
+	Assert(ic_proxy_peer_listener_failed != NULL);
+	/* init it to false when the backend accesses it firstly */
+	if (!found)
+		*ic_proxy_peer_listener_failed = false;
+
+	if (*ic_proxy_peer_listener_failed)
+		return true;
+
+	return false;
 }
 
 /*
