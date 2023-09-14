@@ -519,7 +519,7 @@ ic_proxy_backend_init_context(ChunkTransportState *state)
 }
 
 /*
- * Check if current segment's IC_PROXY listener failed
+ * Check if current Segment's IC_PROXY listener failed
  */
 bool
 ic_proxy_backend_check_listener_failed(void)
@@ -530,14 +530,11 @@ ic_proxy_backend_check_listener_failed(void)
 											&found);
 
 	Assert(ic_proxy_peer_listener_failed != NULL);
-	/* init it to false when the backend accesses it firstly */
+	/* init it to 0 when the backend accesses it firstly */
 	if (!found)
-		*ic_proxy_peer_listener_failed = false;
+		pg_atomic_init_u32(ic_proxy_peer_listener_failed, 0);
 
-	if (*ic_proxy_peer_listener_failed)
-		return true;
-
-	return false;
+	return pg_atomic_read_u32(ic_proxy_peer_listener_failed) > 0;
 }
 
 /*

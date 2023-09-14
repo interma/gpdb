@@ -1293,7 +1293,7 @@ SetupTCPInterconnect(EState *estate)
 
 #ifdef ENABLE_IC_PROXY
 	if (ic_proxy_backend_check_listener_failed())
-		elog(ERROR, "SetupInterconnect: We are IC_PROXY mode, but IC-Proxy Listener listen() failed, please check.");
+		elog(ERROR, "SetupInterconnect: We are in IC_PROXY mode, but IC-Proxy Listener failed, please check.");
 	ic_proxy_backend_init_context(interconnect_context);
 #endif /* ENABLE_IC_PROXY */
 

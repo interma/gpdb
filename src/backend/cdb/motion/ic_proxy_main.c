@@ -41,7 +41,7 @@ static uv_tcp_t		ic_proxy_peer_listener;
 static bool			ic_proxy_peer_listening;
 static bool			ic_proxy_peer_relistening;
 /* flag (in SHM) for incidaing if peer listener bind/listen failed */
-bool 				*ic_proxy_peer_listener_failed;
+pg_atomic_uint32 	*ic_proxy_peer_listener_failed;
 
 static uv_pipe_t	ic_proxy_client_listener;
 static bool			ic_proxy_client_listening;
@@ -160,7 +160,7 @@ ic_proxy_server_peer_listener_init(uv_loop_t *loop)
 	Assert(ic_proxy_peer_listener_failed != NULL);
 	if (ic_proxy_peer_listening)
 	{
-		Assert(*ic_proxy_peer_listener_failed == false);
+		Assert(pg_atomic_read_u32(ic_proxy_peer_listener_failed) == 0);
 		return;
 	}
 
@@ -202,7 +202,7 @@ ic_proxy_server_peer_listener_init(uv_loop_t *loop)
 	{
 		elog(WARNING, "ic-proxy: tcp: failed to bind: %s",
 					 uv_strerror(ret));
-		*ic_proxy_peer_listener_failed = true;
+		pg_atomic_exchange_u32(ic_proxy_peer_listener_failed, 1);
 		return;
 	}
 
@@ -212,7 +212,7 @@ ic_proxy_server_peer_listener_init(uv_loop_t *loop)
 	{
 		elog(WARNING, "ic-proxy: tcp: failed to listen: %s",
 					 uv_strerror(ret));
-		*ic_proxy_peer_listener_failed = true;
+		pg_atomic_exchange_u32(ic_proxy_peer_listener_failed, 1);
 		return;
 	}
 
@@ -220,7 +220,7 @@ ic_proxy_server_peer_listener_init(uv_loop_t *loop)
 	elogif(gp_log_interconnect >= GPVARS_VERBOSITY_VERBOSE, LOG,
 		   "ic-proxy: tcp: listening on socket %d", fd);
 
-	*ic_proxy_peer_listener_failed = false;
+	pg_atomic_exchange_u32(ic_proxy_peer_listener_failed, 0);
 	ic_proxy_peer_listening = true;
 }
 
@@ -541,11 +541,14 @@ ic_proxy_server_main(void)
 	elogif(gp_log_interconnect >= GPVARS_VERBOSITY_TERSE,
 		   LOG, "ic-proxy: server setting up");
 
-	/* init failure flag */
+	/* get and init failure flag */
 	ic_proxy_peer_listener_failed = ShmemInitStruct("IC_PROXY Listener Failure Flag",
 													sizeof(*ic_proxy_peer_listener_failed),
 													&found);
-	*ic_proxy_peer_listener_failed = false;
+	if (!found)
+		pg_atomic_init_u32(ic_proxy_peer_listener_failed, 0);
+	else
+		pg_atomic_exchange_u32(ic_proxy_peer_listener_failed, 0);
 
 	ic_proxy_pkt_cache_init(IC_PROXY_MAX_PKT_SIZE);
 
