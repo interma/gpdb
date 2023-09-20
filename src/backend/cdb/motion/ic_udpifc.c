@@ -3029,63 +3029,61 @@ SetupUDPIFCInterconnect_Internal(SliceTable *sliceTable)
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		CursorICHistoryTable *ich_table = &rx_control_info.cursorHistoryTable;
+		DistributedTransactionId distTransId = getDistributedTransactionId();
 
-		DistributedTransactionId distTransId = 0;
-		TransactionId localTransId = 0;
-		TransactionId subtransId = 0;
-		GetAllTransactionXids(&(distTransId),
-							  &(localTransId),
-							  &(subtransId));
-
-		/*
-		 * distTransId != lastDXatId
-		 * Means one of them isn't a Read-Only transaction, need try to prune.
-		 */
-		if (distTransId != rx_control_info.lastDXatId)
+		if (ich_table->count > (2 * ich_table->size))
 		{
-			if (ich_table->count > (2 * ich_table->size))
+			/*
+			 * distTransId != lastDXatId
+			 * Means the last transaction is finished, it's ok to make a prune.
+			 */
+			if (distTransId != rx_control_info.lastDXatId)
 			{
 				if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
 					elog(DEBUG1, "prune cursor history table (count %d), icid %d, prune_id %d",
 						 ich_table->count, sliceTable->ic_instance_id, sliceTable->ic_instance_id);
 				pruneCursorIcEntry(ich_table, sliceTable->ic_instance_id);
 			}
-		}
-		/*
-		 * distTransId == lastDXatId and they are not InvalidTransactionId(0)
-		 * Means current Non Read-Only transaction isn't finished, MUST not prune.
-		 */
-		else if (rx_control_info.lastDXatId != InvalidTransactionId)
-		{
-			;
-		}
-		/*
-		 * distTransId == lastDXatId and they are InvalidTransactionId(0)
-		 * Means both are Read-Only transactions or the same transaction.
-		 */
-		else
-		{
-			if (ich_table->count > (2 * ich_table->size))
+			/*
+			 * distTransId == lastDXatId and they are not InvalidTransactionId(0)
+			 * Means current (non Read-Only) transaction isn't finished, should not prune.
+			 */
+			else if (rx_control_info.lastDXatId != InvalidTransactionId)
 			{
-				uint32 prune_id = sliceTable->ic_instance_id - ich_table->size;
-
-				/*
-				 * Only prune if we didn't underflow -- also we want the prune id
-				 * to be newer than the limit (hysteresis)
-				 */
-				if (prune_id < sliceTable->ic_instance_id)
+				;
+			}
+			/*
+			 * distTransId == lastDXatId and they are InvalidTransactionId(0)
+			 * Means they are the same transaction or different Read-Only transactions.
+			 *
+			 * For the latter, it's hard to get a perfect timepoint to prune: prune eagerly may
+			 * cause problems (pruned current Txn's Ic instances), but prune in low frequency
+			 * causes memory leak.
+			 *
+			 * So, we choose a simple algorithm to prune it here. And if it mistakenly prune out
+			 * the still-in-used Ic instance (with lower id), the query may hang forever.
+			 * Then user have to set a bigger gp_interconnect_cursor_ic_table_size value and
+			 * try the query again, it is a workaround.
+			 *
+			 * More backgrounds please see: https://github.com/greenplum-db/gpdb/pull/16458
+			 */
+			else
+			{
+				if (sliceTable->ic_instance_id > ich_table->size)
 				{
+					uint32 prune_id = sliceTable->ic_instance_id - ich_table->size;
+					Assert(prune_id < sliceTable->ic_instance_id);
+
 					if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
 						elog(DEBUG1, "prune cursor history table (count %d), icid %d, prune_id %d",
-							 ich_table->count, sliceTable->ic_instance_id, prune_id);
+							ich_table->count, sliceTable->ic_instance_id, prune_id);
 					pruneCursorIcEntry(ich_table, prune_id);
 				}
 			}
 		}
 
 		addCursorIcEntry(ich_table, sliceTable->ic_instance_id, gp_command_count);
-
-		/* save the latest transaction id. */
+		/* save the latest transaction id */
 		rx_control_info.lastDXatId = distTransId;
 	}
 
