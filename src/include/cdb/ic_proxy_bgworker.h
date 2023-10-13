@@ -15,6 +15,7 @@
 
 #include "port/atomics.h"
 
+/* flag (in SHM) for incidaing if peer listener bind/listen failed */
 extern pg_atomic_uint32 *ic_proxy_peer_listener_failed;
 
 extern bool ICProxyStartRule(Datum main_arg);

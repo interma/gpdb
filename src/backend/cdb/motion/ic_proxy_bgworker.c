@@ -37,6 +37,9 @@ ICProxyMain(Datum main_arg)
 	proc_exit(ic_proxy_server_main());
 }
 
+/*
+ * the size of ICProxy SHM structure
+ */
 Size
 ICProxyShmemSize(void)
 {
@@ -45,6 +48,9 @@ ICProxyShmemSize(void)
 	return size;
 }
 
+/*
+ * initialize ICProxy's SHM structure: only one flag variable
+ */
 void
 ICProxyShmemInit(void)
 {
