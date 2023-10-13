@@ -13,7 +13,13 @@
 #ifndef IC_PROXY_BGWORKER_H
 #define IC_PROXY_BGWORKER_H
 
+#include "port/atomics.h"
+
+extern pg_atomic_uint32 *ic_proxy_peer_listener_failed;
+
 extern bool ICProxyStartRule(Datum main_arg);
 extern void ICProxyMain(Datum main_arg);
+extern Size ICProxyShmemSize(void);
+extern void ICProxyShmemInit(void);
 
 #endif   /* IC_PROXY_BGWORKER_H */
