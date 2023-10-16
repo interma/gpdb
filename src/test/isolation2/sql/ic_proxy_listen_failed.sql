@@ -13,9 +13,15 @@
 !\retcode ic_proxy_port=`psql postgres -Atc "show gp_interconnect_proxy_addresses;" | awk -F ',' '{print $1}' | awk -F ':' '{print $4}'` && gpstop -ai > /dev/null && ./script/start_py_httpserver.sh $ic_proxy_port;
 !\retcode sleep 2 && gpstart -a > /dev/null;
 
--- execute a query (should failed)
+-- this output is hard to match, let's ignore it
+-- start_ignore
 2&:select count(*) from PR_16438;
 2<:
+2q:
+-- end_ignore
+
+-- execute a query (should failed)
+3:select count(*) from PR_16438;
 
 -- kill the script to release port and execute query again (should successfully)
 -- Note: different from 7x here, we have to restart cluster (no need in 7x)
@@ -23,5 +29,5 @@
 !\retcode ps aux | grep SimpleHTTPServer | grep -v grep | awk '{print $2}' | xargs kill;
 !\retcode sleep 2 && gpstop -ari > /dev/null;
 
-3:select count(*) from PR_16438;
-3:drop table PR_16438;
+4:select count(*) from PR_16438;
+4:drop table PR_16438;
