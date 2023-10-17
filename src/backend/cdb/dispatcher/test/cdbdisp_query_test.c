@@ -284,6 +284,9 @@ test__CdbDispatchPlan_may_be_interrupted(void **state)
 int
 main(int argc, char *argv[])
 {
+	pqsignal(SIGUSR1, SIG_IGN);
+	pqsignal(SIGUSR2, SIG_IGN);
+
 	cmockery_parse_arguments(argc, argv);
 
 	const UnitTest tests[] =
