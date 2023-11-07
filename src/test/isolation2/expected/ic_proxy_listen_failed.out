@@ -27,7 +27,9 @@ started a http server
 -- this output is hard to match, let's ignore it
 -- start_ignore
 2&:select count(*) from PR_16438;  <waiting ...>
-FAILED:  Forked command is not blocking; got output: ERROR:  SetupInterconnect: We are in IC_PROXY mode, but IC-Proxy Listener failed, please check. (ic_tcp.c:1282)
+FAILED:  Forked command is not blocking; got output: ERROR:  Failed to setup ic_proxy interconnect
+DETAIL:  The ic_proxy process failed to bind or listen.
+HINT:  Please check the server log for related WARNING messages.
 2<:  <... completed>
 FAILED:  Execution failed
 2q: ... <quitting>
@@ -35,7 +37,9 @@ FAILED:  Execution failed
 
 -- execute a query (should failed)
 3:select count(*) from PR_16438;
-ERROR:  SetupInterconnect: We are in IC_PROXY mode, but IC-Proxy Listener failed, please check. (ic_tcp.c:1282)
+ERROR:  Failed to setup ic_proxy interconnect
+DETAIL:  The ic_proxy process failed to bind or listen.
+HINT:  Please check the server log for related WARNING messages.
 
 -- kill the script to release port and execute query again (should successfully)
 -- Note: different from 7x here, we have to restart cluster (no need in 7x)
