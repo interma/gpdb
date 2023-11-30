@@ -2301,8 +2301,6 @@ void
 printTableInit(printTableContent *const content, const printTableOpt *opt,
 			   const char *title, const int ncolumns, const int nrows)
 {
-	long total_cells;
-
 	content->opt = opt;
 	content->title = title;
 	content->ncolumns = ncolumns;
@@ -2310,8 +2308,7 @@ printTableInit(printTableContent *const content, const printTableOpt *opt,
 
 	content->headers = pg_malloc0((ncolumns + 1) * sizeof(*content->headers));
 
-	total_cells = (long)ncolumns * (long)nrows;
-	content->cells = pg_malloc0((total_cells + 1) * sizeof(*content->cells));
+	content->cells = pg_malloc0((ncolumns * nrows + 1) * sizeof(*content->cells));
 
 	content->cellmustfree = NULL;
 	content->footers = NULL;
@@ -2381,18 +2378,15 @@ void
 printTableAddCell(printTableContent *const content, char *cell,
 				  const bool translate, const bool mustfree)
 {
-	long total_cells;
 #ifndef ENABLE_NLS
 	(void) translate;			/* unused parameter */
 #endif
 
-	/* product of cols and rows, using long type to prevent the int overflow */
-	total_cells = (long)content->ncolumns * (long)content->nrows;
-	if (content->cellsadded >= total_cells)
+	if (content->cellsadded >= content->ncolumns * content->nrows)
 	{
 		fprintf(stderr, _("Cannot add cell to table content: "
-						  "total cell count of %ld exceeded, cells added: %ld.\n"),
-				total_cells, content->cellsadded);
+						  "total cell count of %d exceeded.\n"),
+				content->ncolumns * content->nrows);
 		exit(EXIT_FAILURE);
 	}
 
@@ -2408,7 +2402,7 @@ printTableAddCell(printTableContent *const content, char *cell,
 	{
 		if (content->cellmustfree == NULL)
 			content->cellmustfree =
-				pg_malloc0((total_cells + 1) * sizeof(bool));
+				pg_malloc0((content->ncolumns * content->nrows + 1) * sizeof(bool));
 
 		content->cellmustfree[content->cellsadded] = true;
 	}
@@ -2476,10 +2470,9 @@ printTableCleanup(printTableContent *const content)
 {
 	if (content->cellmustfree)
 	{
-		long		i;
-		long		total_cells;
-		total_cells = (long)content->ncolumns * (long)content->nrows;
-		for (i = 0; i < total_cells; i++)
+		int			i;
+
+		for (i = 0; i < content->nrows * content->ncolumns; i++)
 		{
 			if (content->cellmustfree[i])
 				free((char *) content->cells[i]);
