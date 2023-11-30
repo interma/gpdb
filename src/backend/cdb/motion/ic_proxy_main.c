@@ -243,7 +243,7 @@ ic_proxy_server_peer_listener_reinit(uv_loop_t *loop)
 		 * keep the ic_proxy_peer_listening as true during the process to
 		 * prevent double connect.
 		 */
-		ic_proxy_log(LOG, "ic-proxy-server: closing the legacy peer listener");
+		elog(LOG, "ic-proxy: closing the legacy peer listener");
 
 		/* Only recreate a new listener if an address is assigned to us */
 		ic_proxy_peer_relistening = !!myaddr;

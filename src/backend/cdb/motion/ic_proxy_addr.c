@@ -70,7 +70,7 @@ static ICProxyAddr *ic_proxy_my_addr = NULL;
  * The real type of the arguments is "const ListCell **".
  */
 static int
-ic_proxy_addr_compare_dbid(const void *a, const void *b, void *arg)
+ic_proxy_addr_compare_dbid(const void *a, const void *b)
 {
 	const ICProxyAddr *addr1 = lfirst(*(const ListCell **) a);
 	const ICProxyAddr *addr2 = lfirst(*(const ListCell **) b);
@@ -308,7 +308,7 @@ ic_proxy_reload_addresses(uv_loop_t *loop)
 
 	/* sort the new addrs so it's easy to diff */
 	ic_proxy_unknown_addrs = list_qsort(ic_proxy_unknown_addrs,
-										ic_proxy_addr_compare_dbid, NULL);
+										ic_proxy_addr_compare_dbid);
 
 	/* the last thing is to classify the addrs */
 	ic_proxy_classify_addresses(ic_proxy_prev_addrs /* oldaddrs */,
@@ -345,7 +345,7 @@ ic_proxy_addr_get_port(const ICProxyAddr *addr)
 
 	elog(WARNING,
 				 "ic-proxy: invalid address family %d for seg%d,dbid%d",
-				 addr->addr.ss_family, addr->content, addr->dbid);
+				 addr->sockaddr.ss_family, addr->content, addr->dbid);
 	return -1;
 }
 

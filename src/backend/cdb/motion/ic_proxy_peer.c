@@ -881,7 +881,8 @@ ic_proxy_peer_disconnect(ICProxyPeer *peer)
 	if (!(peer->state & IC_PROXY_PEER_STATE_CONNECTING))
 		return;
 
-	ic_proxy_log(LOG, "%s: disconnecting", peer->name);
+	elogif(gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG, DEBUG3,
+		   "ic-proxy: %s: disconnecting", peer->name);
 	ic_proxy_peer_shutdown(peer);
 }
 
