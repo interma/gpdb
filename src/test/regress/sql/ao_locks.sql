@@ -1,8 +1,6 @@
 -- @Description The locks held after different operations
 CREATE TABLE ao_locks_table (a INT, b INT) WITH (appendonly=true) distributed by (a);
 INSERT INTO ao_locks_table SELECT i as a, i as b FROM generate_series(1, 100) AS i;
--- hongxu add it
-drop ao_locks_table;
 
 create or replace view locktest_master as
 select coalesce(
