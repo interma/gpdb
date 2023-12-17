@@ -306,6 +306,13 @@ ic_proxy_reload_addresses(uv_loop_t *loop)
 		ic_proxy_free(buf);
 	}
 
+	/* using the default addr if gp_interconnect_proxy_addresses is not set */
+	if (ic_proxy_my_addr == NULL)
+	{
+		// @interma still need to do more in gpexpand:
+		// https://jira.eng.vmware.com/browse/GPSERVER-722
+	}
+
 	/* sort the new addrs so it's easy to diff */
 	ic_proxy_unknown_addrs = list_qsort(ic_proxy_unknown_addrs,
 										ic_proxy_addr_compare_dbid);
