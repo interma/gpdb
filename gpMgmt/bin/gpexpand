@@ -2045,7 +2045,8 @@ class gpexpand:
             else:
                 self.logger.info("Checking ICProxy addresses done: no need to change")
 
-        raise Exception("@interma let's stop here")
+        #raise Exception("@interma let's stop here")
+        return
 
 # -----------------------------------------------
 class ExpandTable():
