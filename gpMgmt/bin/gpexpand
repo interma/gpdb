@@ -2039,13 +2039,12 @@ class gpexpand:
                     self.logger.error("Please run gpconfig to set gp_interconnect_proxy_addresses (replace the {port} with a proper value):")
                     self.logger.error(" gpconfig -c gp_interconnect_proxy_addresses -v \"'%s'\" --skipvalidation" % (new_addresses_string))
                     self.logger.error('then rerun gpexpand -i {input_file}')
+                    raise Exception("Checking ICProxy addresses failed")
                 else:
                     self.logger.warning("Recommended that run gpconfig to set gp_interconnect_proxy_addresses (replace the {port} with a proper value):")
                     self.logger.warning(" gpconfig -c gp_interconnect_proxy_addresses -v \"'%s'\" --skipvalidation" % (new_addresses_string))
             else:
-                self.logger.info("Checking ICProxy addresses done: no need to change")
-
-        #raise Exception("@interma let's stop here")
+                self.logger.info("Checking ICProxy addresses passed")
         return
 
 # -----------------------------------------------
