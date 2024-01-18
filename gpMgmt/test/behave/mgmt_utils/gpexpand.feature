@@ -240,12 +240,12 @@ Feature: expand the cluster by adding more segments
         And a working directory of the test as '/data/gpdata/gpexpand'
         And the user runs command "rm -rf /data/gpdata/gpexpand/*"
         And a temporary directory under "/data/gpdata/gpexpand/expandedData" to expand into
-        And a cluster is created with no mirrors on "mdw" and "sdw1"
+        And a cluster is created with no mirrors on "cdw" and "sdw1"
         And the coordinator pid has been saved
         And database "gptest" exists
         And there are no gpexpand_inputfiles
         And the cluster is running in IC proxy mode
-        And the cluster is setup for an expansion on hosts "mdw"
+        And the cluster is setup for an expansion on hosts "cdw"
         And the user runs gpexpand interview to add 1 new segment and 0 new host "ignore.host"
         And the number of segments have been saved
         When the user runs gpexpand with the latest gpexpand_inputfile without ret code check
@@ -258,12 +258,12 @@ Feature: expand the cluster by adding more segments
         And a working directory of the test as '/data/gpdata/gpexpand'
         And the user runs command "rm -rf /data/gpdata/gpexpand/*"
         And a temporary directory under "/data/gpdata/gpexpand/expandedData" to expand into
-        And a cluster is created with no mirrors on "mdw" and "sdw1"
+        And a cluster is created with no mirrors on "cdw" and "sdw1"
         And the coordinator pid has been saved
         And database "gptest" exists
         And there are no gpexpand_inputfiles
-        And the cluster is running in IC proxy mode with new proxy address 4:2:mdw:16502
-        And the cluster is setup for an expansion on hosts "mdw"
+        And the cluster is running in IC proxy mode with new proxy address 4:2:sdw1:16502
+        And the cluster is setup for an expansion on hosts "cdw"
         And the user runs gpexpand interview to add 1 new segment and 0 new host "ignore.host"
         And the number of segments have been saved
         When the user runs gpexpand with the latest gpexpand_inputfile without ret code check
