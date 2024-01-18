@@ -377,6 +377,16 @@ def impl(context, content_ids):
                       remoteHost=seg.getSegmentHostName(), ctxt=REMOTE)
         cmd.run(validateAfter=True)
 
+@given('fts probing is disabled')
+@when('fts probing is disabled')
+@then('fts probing is disabled')
+def impl(context):
+    create_fault_query = "CREATE EXTENSION IF NOT EXISTS gp_inject_fault;"
+    execute_sql('postgres', create_fault_query)
+
+    inject_fault_query = "SELECT gp_inject_fault_infinite('fts_probe', 'skip', dbid) FROM gp_segment_configuration WHERE role='p' AND content=-1;"
+    execute_sql('postgres', inject_fault_query)
+    return
 
 @given('the user {action} the walsender on the {segment} on content {content_ids}')
 @when('the user {action} the walsender on the {segment} on content {content_ids}')
@@ -811,11 +821,8 @@ def impl(context, command, out_msg, num):
     msg_list = context.stdout_message.split('\n')
     msg_list = [x.strip() for x in msg_list]
 
-    count = 0
-    for line in msg_list:
-        if out_msg in line:
-            count += 1
-    if count != int(num):
+    match_count = len(re.findall(out_msg, context.stdout_message))
+    if match_count != int(num):
         raise Exception("Expected %s to occur %s times. Found %d. stdout: %s" % (out_msg, num, count, msg_list))
 
 

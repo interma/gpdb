@@ -981,7 +981,7 @@ where (exists(select 1 from tenk1 k where k.unique1 = t.unique2) or ten < 0)
                                        Hash Key: tenk1.unique2
                                        ->  Index Scan using tenk1_thous_tenthous on tenk1
                                              Index Cond: (thousand = 1)
-                                 ->  Index Scan using tenk1_unique1 on tenk1 tenk1_1
+                                 ->  Index Only Scan using tenk1_unique1 on tenk1 tenk1_1
                                        Index Cond: (unique1 = tenk1.unique2)
  Optimizer: GPORCA
 (17 rows)
@@ -1199,21 +1199,20 @@ select sum(o.four), sum(ss.a) from
     select * from x
   ) ss
 where o.ten = 1;
-                       QUERY PLAN                        
----------------------------------------------------------
- Finalize Aggregate
-   ->  Gather Motion 3:1  (slice1; segments: 3)
-         ->  Partial Aggregate
-               ->  Nested Loop
-                     ->  Seq Scan on onek o
-                           Filter: (ten = 1)
-                     ->  Materialize
-                           ->  Recursive Union
-                                 ->  Result
-                                 ->  WorkTable Scan on x
-                                       Filter: (a < 10)
- Optimizer: Postgres query optimizer
-(12 rows)
+                      QUERY PLAN                      
+------------------------------------------------------
+ Aggregate
+   ->  Nested Loop
+         ->  Gather Motion 3:1  (slice1; segments: 3)
+               ->  Seq Scan on onek o
+                     Filter: (ten = 1)
+         ->  Materialize
+               ->  Recursive Union
+                     ->  Result
+                     ->  WorkTable Scan on x
+                           Filter: (a < 10)
+ Optimizer: Postgres-based planner
+(11 rows)
 
 select sum(o.four), sum(ss.a) from
   onek o cross join lateral (

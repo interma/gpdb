@@ -614,6 +614,20 @@ The `gp_autostats_allow_nonowner` configuration parameter can be changed only by
 |-----------|-------|-------------------|
 |Boolean|false|coordinator, session, reload, superuser|
 
+## <a id="gp_autostats_lock_wait"></a>gp_autostats_lock_wait 
+
+The `gp_autostats_lock_wait` server configuration parameter allows you to control whether `ANALYZE` commands triggered by autostats collection will block if they cannot acquire the table lock.
+
+The default value is `off`; `ANALYZE` commands will attempt locks on tables and, if unsuccessful, will proceed without possession of the table lock. 
+
+Keeping this parameter turned off will prevent deadlocks and make automatic statistics collection sessions finish in a more timely and predictable fashion.
+
+When set to `on`, the `ANALYZE` command will block until the table lock is acquired.
+
+|Value Range|Default|Set Classifications|
+|-----------|-------|-------------------|
+|Boolean|off|coordinator, session, session, reload|
+
 ## <a id="gp_autostats_mode"></a>gp\_autostats\_mode 
 
 Specifies the mode for triggering automatic statistics collection with `ANALYZE`. The `on_no_stats` option triggers statistics collection for `CREATE TABLE AS SELECT`, `INSERT`, or `COPY` operations on any table that has no existing statistics.
@@ -1455,6 +1469,16 @@ When set to `true` (the default) Greenplum Database's resource group scheduler b
 |-----------|-------|-------------------|
 |Boolean|true|local, session, reload|
 
+## <a id="gp_resource_group_cgroup_parent"></a>gp_resource_group_cgroup_parent
+
+> **Note** The `gp_resource_group_cgroup_parent` server configuration parameter is enforced only when resource group-based resource management is active and cgroup v2 is used.
+
+Identifies the root path of the `gpdb` cgroup hierarchy.
+
+|Value Range|Default|Set Classifications|
+|-----------|-------|-------------------|
+|char|"gpdb.service"|local, system, restart, superuser|
+
 ## <a id="gp_resource_group_cpu_limit"></a>gp\_resource\_group\_cpu\_limit 
 
 > **Note** The `gp_resource_group_cpu_limit` server configuration parameter is enforced only when resource group-based resource management is active.
@@ -2021,6 +2045,18 @@ This outputs a line to the server log detailing each successful connection. Some
 |-----------|-------|-------------------|
 |Boolean|off|local, system, reload|
 
+## <a id="log_directory"></a>log\_directory
+
+Sets the destination directory for log files. You may specify its value as relative to the coordinator and segments data directory or as absolute path. Only superusers and users privilege can change this setting. The default value, `log`, indicates that the logs are located in the `log` directory under the coordinator and segment data directory.
+
+When you specify the value as an absolute path, or as a relative path that is outside the data directory, Greenplum appends a subdirectory with a unique identifier (DBID) to the directory specified by this parameter. The unique identifier matches the value of `dbid` from `gp_segment_configuration`. For example, if you set `log_directory` as `/tmp/logs`, Greenplum creates the directories: `/tmp/logs/1` for the coordinator, `/tmp/logs/2` for seg0, `/tmp/logs/3` for seg1, etcetera. 
+
+> **Important** Do not remove the default log directories as some Greenplum utilities will still need them during initialization.
+
+|Value Range|Default|Set Classifications|
+|-----------|-------|-------------------|
+|String|log|coordinator, system, reload, superuser|
+
 ## <a id="log_disconnections"></a>log\_disconnections 
 
 This outputs a line in the server log at termination of a client session, and includes the duration of the session.
@@ -2551,6 +2587,22 @@ The default value is `on`, GPORCA attempts to plan and execute operations on rep
 The parameter can be set for a database system, an individual database, or a session or query.
 
 For information about GPORCA, see [About GPORCA](../../admin_guide/query/topics/query-piv-optimizer.html) in the *Greenplum Database Administrator Guide*.
+
+|Value Range|Default|Set Classifications|
+|-----------|-------|-------------------|
+|Boolean|on|coordinator, session, reload|
+
+## <a id="optimizer_enable_right_outer_join"></a>optimizer_enable_right_outer_join 
+
+When GPORCA is enabled (the default), this parameter allows you to control whether GPORCA generates right outer joins. 
+
+When set to the default value of `on`, GPORCA may both generate right outer joins and convert left outer joins to right outer joins if the situation calls for it. By setting this to `off`, you force GPORCA to generate equivalent left outer joins for incoming right outer joins and never generate right outer joins. 
+
+In situations in which you are observing poor performance related to right outer joins you may choose to suppress their use by setting this parameter to `off`.
+
+You may set this parameter for a database system, an individual database, or a session or query. However, we recommend that you set this parameter at the query level, as there are a number of use cases where right outer join is the correct query plan alternative to choose.
+
+For information about GPORCA, see the [About GPORCA](../../admin_guide/query/topics/query-piv-optimizer.html) topic.
 
 |Value Range|Default|Set Classifications|
 |-----------|-------|-------------------|

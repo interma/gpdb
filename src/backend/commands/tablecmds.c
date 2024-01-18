@@ -276,7 +276,8 @@ static void truncate_check_activity(Relation rel);
 static void RangeVarCallbackForTruncate(const RangeVar *relation,
 										Oid relId, Oid oldRelId, void *arg);
 static List *MergeAttributes(List *schema, List *supers, char relpersistence,
-							 bool is_partition, List **supconstr, bool gp_alter_part);
+							 bool is_partition, List **supconstr,
+							 CreateStmtOrigin origin);
 static void MergeAttributesIntoExisting(Relation child_rel, Relation parent_rel);
 static bool MergeCheckConstraint(List *constraints, char *name, Node *expr);
 static void MergeConstraintsIntoExisting(Relation child_rel, Relation parent_rel);
@@ -899,7 +900,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 							stmt->relation->relpersistence,
 							stmt->partbound != NULL,
 							&old_constraints,
-							stmt->gp_style_alter_part);
+							stmt->origin);
 	}
 	else
 	{
@@ -1201,6 +1202,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 		Relation	parent,
 					defaultRel = NULL;
 		RangeTblEntry *rte;
+		bool		classic_range_workflow;
 
 		/* Already have strong enough lock on the parent */
 		parent = table_open(parentId, NoLock);
@@ -1214,6 +1216,9 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 					 errmsg("\"%s\" is not partitioned",
 							RelationGetRelationName(parent))));
+
+		classic_range_workflow = stmt->origin == ORIGIN_GP_CLASSIC_CREATE_GEN &&
+			stmt->partbound->strategy == PARTITION_STRATEGY_RANGE;
 
 		/*
 		 * The partition constraint of the default partition depends on the
@@ -1233,11 +1238,19 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 		 * added or removed i.e. we should take the lock in same order at all
 		 * the places such that lock parent, lock default partition and then
 		 * lock the partition so as to avoid a deadlock.
+		 *
+		 * GPDB: The above is unnecessary if we are in the process of creating
+		 * the partition hierarchy with classic syntax.
 		 */
-		defaultPartOid =
-			get_default_oid_from_partdesc(RelationRetrievePartitionDesc(parent));
-		if (OidIsValid(defaultPartOid))
-			defaultRel = table_open(defaultPartOid, AccessExclusiveLock);
+		if (classic_range_workflow)
+			defaultPartOid = InvalidOid;
+		else
+		{
+			defaultPartOid =
+				get_default_oid_from_partdesc(RelationRetrievePartitionDesc(parent));
+			if (OidIsValid(defaultPartOid))
+				defaultRel = table_open(defaultPartOid, AccessExclusiveLock);
+		}
 
 		/* Transform the bound values */
 		pstate = make_parsestate(NULL);
@@ -1256,8 +1269,12 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 		/*
 		 * Check first that the new partition's bound is valid and does not
 		 * overlap with any of existing partitions of the parent.
+		 *
+		 * GPDB: The above is unnecessary if we are in the process of creating
+		 * partitions with classic syntax generated with the EVERY clause.
 		 */
-		check_new_partition_bound(relname, parent, bound);
+		if (!classic_range_workflow)
+			check_new_partition_bound(relname, parent, bound);
 
 		/*
 		 * If the default partition exists, its partition constraints will
@@ -1274,7 +1291,10 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 		}
 
 		/* Update the pg_class entry. */
-		StorePartitionBound(rel, parent, bound);
+		if (classic_range_workflow)
+			StorePartitionBoundSkipInvalidation(rel, parent, bound);
+		else
+			StorePartitionBound(rel, parent, bound);
 
 		table_close(parent, NoLock);
 
@@ -2589,7 +2609,7 @@ storage_name(char c)
  */
 List *
 MergeAttributes(List *schema, List *supers, char relpersistence,
-				bool is_partition, List **supconstr, bool gp_style_alter_part)
+				bool is_partition, List **supconstr, CreateStmtOrigin origin)
 {
 	ListCell   *entry;
 	List	   *inhSchema = NIL;
@@ -2723,7 +2743,7 @@ MergeAttributes(List *schema, List *supers, char relpersistence,
 		 * already held by alter command, and when we generate CREATE 
 		 * STMT and execute them we have 2 reference instead on 1 here.
 		 */
-		if (is_partition && (Gp_role != GP_ROLE_DISPATCH || !gp_style_alter_part))
+		if (is_partition && (Gp_role != GP_ROLE_DISPATCH || origin != ORIGIN_GP_CLASSIC_ALTER_GEN))
 			CheckTableNotInUse(relation, "CREATE TABLE .. PARTITION OF");
 
 		/*
@@ -7264,12 +7284,56 @@ setupColumnOnlyRewrite(List **wqueue,
 
 			if (RelationIsAoCols(rel))
 			{
+				bool add_generated_column = false;
+				ListCell *l;
+
+				/*
+				 * Check if it is adding generated column by existing column value.
+				 *
+				 * We place this check here instead of under AT_AddColumn is
+				 * because add-column could be a subcommand of ALTER TABLE
+				 * which may contain other subcommand like alter-column-type.
+				 * We need to pre-detect the case and mark/unmark `rewrite` flag
+				 * accordingly to determine whether needs to do AOCO optimization
+				 * or not.
+				 */
+				foreach(l, childtab->newvals)
+				{
+					NewColumnValue *nv = lfirst(l);
+					if (nv->is_generated && contain_var_clause((Node *)nv->expr))
+					{
+						/* 
+						 * For a generated column, if the expression contains Var,
+						 * it indicates the new column value needs to be calculated
+						 * based on existing column, in this case we need to fallback
+						 * to ATRewriteTable() to do table scan instead of scanning
+						 * varblock header only.
+						 * 
+						 * TODO: currently we scan all columns in ATRewriteTable(),
+						 * it is optimizable to only scan the required columns.
+						 * 
+						 * Note, for partitioned table, we clear the flag for parent
+						 * only as newvals is null for children, we clear it in
+						 * recursive ATExecAddColumn(recursing=true) for children.
+						 */
+						add_generated_column = true;
+						break;
+					}
+				}
+
 				if (ATtype == AT_AddColumn)
 					childtab->rewrite |= AT_REWRITE_NEW_COLUMNS_ONLY;
 				else if (ATtype == AT_AlterColumnType || ATtype == AT_SetColumnEncoding)
 					childtab->rewrite |= AT_REWRITE_REWRITE_COLUMNS_ONLY;
 				else
 					Assert(false); /* shouldn't reach here */
+				
+				/* unmark flags to fallback to ATRewriteTable() for generated column */
+				if (add_generated_column)
+				{
+					childtab->rewrite &= ~AT_REWRITE_NEW_COLUMNS_ONLY;
+					childtab->rewrite &= ~AT_REWRITE_REWRITE_COLUMNS_ONLY;
+				}
 			}
 			heap_close(rel, NoLock);
 		}
@@ -7617,6 +7681,24 @@ ATExecAddColumn(List **wqueue, AlteredTableInfo *tab, Relation rel,
 				 */
 				Assert(tab);
 				tab->newvals = lappend(tab->newvals, newval);
+
+				/*
+				 * Similar like setupColumnOnlyRewrite(), we need to clear
+				 * AT_REWRITE_NEW_COLUMNS_ONLY to fallback to do table scan instead
+				 * of varblock header only scan for partitions in the case of
+				 * generating column based on existing column values.
+				 * 
+				 * TODO: currently we scan all columns in ATRewriteTable(),
+				 * it is optimizable to only scan the required columns.
+				 */
+				if (tab->rewrite & AT_REWRITE_NEW_COLUMNS_ONLY &&
+					newval->is_generated && contain_var_clause((Node *)newval->expr))
+				{
+					/* Assuming AT_REWRITE_NEW_COLUMNS_ONLY is only for ao_column tables. */
+					Assert(RelationIsAoCols(rel));
+					tab->rewrite &= ~AT_REWRITE_NEW_COLUMNS_ONLY;
+					tab->rewrite &= ~AT_REWRITE_REWRITE_COLUMNS_ONLY;
+				}
 			}
 			else
 			{
@@ -16900,7 +16982,7 @@ prebuild_temp_table(Relation rel, RangeVar *tmpname, DistributedBy *distro,
 		cs->ownerid = rel->rd_rel->relowner;
 		cs->tablespacename = get_tablespace_name(rel->rd_rel->reltablespace);
 		cs->buildAoBlkdir = false;
-		cs->gp_style_alter_part = false;
+		cs->origin = ORIGIN_NO_GEN;
 
 		if (isTmpTableAo &&
 			rel->rd_rel->relhasindex)

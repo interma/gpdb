@@ -80,7 +80,6 @@ extern "C" {
 #include "naucrates/dxl/operators/CDXLPhysicalRoutedDistributeMotion.h"
 #include "naucrates/dxl/operators/CDXLPhysicalSort.h"
 #include "naucrates/dxl/operators/CDXLPhysicalSplit.h"
-#include "naucrates/dxl/operators/CDXLPhysicalSubqueryScan.h"
 #include "naucrates/dxl/operators/CDXLPhysicalTVF.h"
 #include "naucrates/dxl/operators/CDXLPhysicalTableScan.h"
 #include "naucrates/dxl/operators/CDXLPhysicalValuesScan.h"
@@ -417,12 +416,6 @@ CTranslatorDXLToPlStmt::TranslateDXLOperatorToPlan(
 		{
 			plan = TranslateDXLSort(dxlnode, output_context,
 									ctxt_translation_prev_siblings);
-			break;
-		}
-		case EdxlopPhysicalSubqueryScan:
-		{
-			plan = TranslateDXLSubQueryScan(dxlnode, output_context,
-											ctxt_translation_prev_siblings);
 			break;
 		}
 		case EdxlopPhysicalResult:
@@ -881,8 +874,6 @@ CTranslatorDXLToPlStmt::TranslateDXLIndexScan(
 	// translate index condition list
 	List *index_cond = NIL;
 	List *index_orig_cond = NIL;
-	List *index_strategy_list = NIL;
-	List *index_subtype_list = NIL;
 
 	// Translate Index Conditions if Index isn't used for order by.
 	if (!IsIndexForOrderBy(&base_table_context, ctxt_translation_prev_siblings,
@@ -894,8 +885,7 @@ CTranslatorDXLToPlStmt::TranslateDXLIndexScan(
 			physical_idx_scan_dxlop->GetDXLTableDescr(),
 			false,	// is_bitmap_index_probe
 			md_index, md_rel, output_context, &base_table_context,
-			ctxt_translation_prev_siblings, &index_cond, &index_orig_cond,
-			&index_strategy_list, &index_subtype_list);
+			ctxt_translation_prev_siblings, &index_cond, &index_orig_cond);
 	}
 
 	index_scan->indexqual = index_cond;
@@ -1035,8 +1025,6 @@ CTranslatorDXLToPlStmt::TranslateDXLIndexOnlyScan(
 	// translate index condition list
 	List *index_cond = NIL;
 	List *index_orig_cond = NIL;
-	List *index_strategy_list = NIL;
-	List *index_subtype_list = NIL;
 
 	// Translate Index Conditions if Index isn't used for order by.
 	if (!IsIndexForOrderBy(&base_table_context, ctxt_translation_prev_siblings,
@@ -1048,8 +1036,7 @@ CTranslatorDXLToPlStmt::TranslateDXLIndexOnlyScan(
 			physical_idx_scan_dxlop->GetDXLTableDescr(),
 			false,	// is_bitmap_index_probe
 			md_index, md_rel, output_context, &base_table_context,
-			ctxt_translation_prev_siblings, &index_cond, &index_orig_cond,
-			&index_strategy_list, &index_subtype_list);
+			ctxt_translation_prev_siblings, &index_cond, &index_orig_cond);
 	}
 
 	index_scan->indexqual = index_cond;
@@ -1108,8 +1095,7 @@ CTranslatorDXLToPlStmt::TranslateIndexConditions(
 	const IMDRelation *md_rel, CDXLTranslateContext *output_context,
 	CDXLTranslateContextBaseTable *base_table_context,
 	CDXLTranslationContextArray *ctxt_translation_prev_siblings,
-	List **index_cond, List **index_orig_cond, List **index_strategy_list,
-	List **index_subtype_list)
+	List **index_cond, List **index_orig_cond)
 {
 	// array of index qual info
 	CIndexQualInfoArray *index_qual_info_array =
@@ -1196,12 +1182,10 @@ CTranslatorDXLToPlStmt::TranslateIndexConditions(
 
 		Node *left_arg;
 		Node *right_arg;
-		bool is_null_test_type = false;
 		if (IsA(index_cond_expr, NullTest))
 		{
 			// NullTest only has one arg
 			left_arg = (Node *) (((NullTest *) index_cond_expr)->arg);
-			is_null_test_type = true;
 			right_arg = nullptr;
 		}
 		else
@@ -1263,33 +1247,10 @@ CTranslatorDXLToPlStmt::TranslateIndexConditions(
 			attno = ((Var *) right_arg)->varattno;
 		}
 
-		// NullTest indexqual doesn't need strategy or subtype
-		if (is_null_test_type)
-		{
-			index_qual_info_array->Append(GPOS_NEW(m_mp) CIndexQualInfo(
-				attno, index_cond_expr, original_index_cond_expr,
-				InvalidStrategy, InvalidOid));
-		}
-		else
-		{
-			// retrieve index strategy and subtype
-			StrategyNumber strategy_num;
-			OID index_subtype_oid = InvalidOid;
+		// create index qual
+		index_qual_info_array->Append(GPOS_NEW(m_mp) CIndexQualInfo(
+			attno, index_cond_expr, original_index_cond_expr));
 
-			OID cmp_operator_oid =
-				CTranslatorUtils::OidCmpOperator(index_cond_expr);
-			GPOS_ASSERT(InvalidOid != cmp_operator_oid);
-			OID op_family_oid = CTranslatorUtils::GetOpFamilyForIndexQual(
-				attno, CMDIdGPDB::CastMdid(index->MDId())->Oid());
-			GPOS_ASSERT(InvalidOid != op_family_oid);
-			gpdb::IndexOpProperties(cmp_operator_oid, op_family_oid,
-									&strategy_num, &index_subtype_oid);
-
-			// create index qual
-			index_qual_info_array->Append(GPOS_NEW(m_mp) CIndexQualInfo(
-				attno, index_cond_expr, original_index_cond_expr, strategy_num,
-				index_subtype_oid));
-		}
 		if (modified_null_test_cond_dxlnode != nullptr)
 		{
 			modified_null_test_cond_dxlnode->Release();
@@ -1306,10 +1267,6 @@ CTranslatorDXLToPlStmt::TranslateIndexConditions(
 		*index_cond = gpdb::LAppend(*index_cond, index_qual_info->m_expr);
 		*index_orig_cond =
 			gpdb::LAppend(*index_orig_cond, index_qual_info->m_original_expr);
-		*index_strategy_list = gpdb::LAppendInt(
-			*index_strategy_list, index_qual_info->m_index_subtype_oid);
-		*index_subtype_list = gpdb::LAppendOid(
-			*index_subtype_list, index_qual_info->m_index_subtype_oid);
 	}
 
 	// clean up
@@ -3302,105 +3259,6 @@ CTranslatorDXLToPlStmt::TranslateDXLSort(
 	return (Plan *) sort;
 }
 
-//---------------------------------------------------------------------------
-//	@function:
-//		CTranslatorDXLToPlStmt::TranslateDXLSubQueryScan
-//
-//	@doc:
-//		Translate DXL subquery scan node into GPDB SubqueryScan plan node
-//
-//---------------------------------------------------------------------------
-Plan *
-CTranslatorDXLToPlStmt::TranslateDXLSubQueryScan(
-	const CDXLNode *subquery_scan_dxlnode, CDXLTranslateContext *output_context,
-	CDXLTranslationContextArray *ctxt_translation_prev_siblings)
-{
-	// create sort plan node
-	SubqueryScan *subquery_scan = MakeNode(SubqueryScan);
-
-	Plan *plan = &(subquery_scan->scan.plan);
-	plan->plan_node_id = m_dxl_to_plstmt_context->GetNextPlanId();
-
-	CDXLPhysicalSubqueryScan *subquery_scan_dxlop =
-		CDXLPhysicalSubqueryScan::Cast(subquery_scan_dxlnode->GetOperator());
-
-	// translate operator costs
-	TranslatePlanCosts(subquery_scan_dxlnode, plan);
-
-	// translate subplan
-	CDXLNode *child_dxlnode = (*subquery_scan_dxlnode)[EdxlsubqscanIndexChild];
-	CDXLNode *project_list_dxlnode =
-		(*subquery_scan_dxlnode)[EdxlsubqscanIndexProjList];
-	CDXLNode *filter_dxlnode =
-		(*subquery_scan_dxlnode)[EdxlsubqscanIndexFilter];
-
-	CDXLTranslateContext child_context(m_mp, false,
-									   output_context->GetColIdToParamIdMap());
-
-	Plan *child_plan = TranslateDXLOperatorToPlan(
-		child_dxlnode, &child_context, ctxt_translation_prev_siblings);
-
-	// create an rtable entry for the subquery scan
-	RangeTblEntry *rte = MakeNode(RangeTblEntry);
-	rte->rtekind = RTE_SUBQUERY;
-
-	Alias *alias = MakeNode(Alias);
-	alias->colnames = NIL;
-
-	// get table alias
-	alias->aliasname = CTranslatorUtils::CreateMultiByteCharStringFromWCString(
-		subquery_scan_dxlop->MdName()->GetMDName()->GetBuffer());
-
-	// get column names from child project list
-	CDXLTranslateContextBaseTable base_table_context(m_mp);
-
-	Index index =
-		gpdb::ListLength(m_dxl_to_plstmt_context->GetRTableEntriesList()) + 1;
-	(subquery_scan->scan).scanrelid = index;
-	base_table_context.SetRelIndex(index);
-
-	ListCell *lc_tgtentry = nullptr;
-
-	CDXLNode *child_proj_list_dxlnode = (*child_dxlnode)[0];
-
-	ULONG ul = 0;
-
-	ForEach(lc_tgtentry, child_plan->targetlist)
-	{
-		TargetEntry *target_entry = (TargetEntry *) lfirst(lc_tgtentry);
-
-		// non-system attribute
-		CHAR *col_name_char_array = PStrDup(target_entry->resname);
-		Value *val_colname = gpdb::MakeStringValue(col_name_char_array);
-		alias->colnames = gpdb::LAppend(alias->colnames, val_colname);
-
-		// get corresponding child project element
-		CDXLScalarProjElem *sc_proj_elem_dxlop = CDXLScalarProjElem::Cast(
-			(*child_proj_list_dxlnode)[ul]->GetOperator());
-
-		// save mapping col id -> index in translate context
-		(void) base_table_context.InsertMapping(sc_proj_elem_dxlop->Id(),
-												target_entry->resno);
-		ul++;
-	}
-
-	rte->eref = alias;
-
-	// add range table entry for the subquery to the list
-	m_dxl_to_plstmt_context->AddRTE(rte);
-
-	// translate proj list and filter
-	TranslateProjListAndFilter(
-		project_list_dxlnode, filter_dxlnode,
-		&base_table_context,  // translate context for the base table
-		nullptr, &plan->targetlist, &plan->qual, output_context);
-
-	subquery_scan->subplan = child_plan;
-
-	SetParamIds(plan);
-	return (Plan *) subquery_scan;
-}
-
 //------------------------------------------------------------------------------
 // If the top level is not a function returning set then we need to check if the
 // project element contains any SRF's deep down the tree. If we found any SRF's
@@ -4478,8 +4336,6 @@ CTranslatorDXLToPlStmt::TranslateDXLDynIdxOnlyScan(
 	// translate index condition list
 	List *index_cond = NIL;
 	List *index_orig_cond = NIL;
-	List *index_strategy_list = NIL;
-	List *index_subtype_list = NIL;
 
 	TranslateIndexConditions(
 		(*dyn_idx_only_scan_dxlnode)
@@ -4487,8 +4343,7 @@ CTranslatorDXLToPlStmt::TranslateDXLDynIdxOnlyScan(
 		dyn_index_only_scan_dxlop->GetDXLTableDescr(),
 		false,	// is_bitmap_index_probe
 		md_index, md_rel, output_context, &base_table_context,
-		ctxt_translation_prev_siblings, &index_cond, &index_orig_cond,
-		&index_strategy_list, &index_subtype_list);
+		ctxt_translation_prev_siblings, &index_cond, &index_orig_cond);
 
 
 	dyn_idx_only_scan->indexscan.indexqual = index_cond;
@@ -4561,8 +4416,6 @@ CTranslatorDXLToPlStmt::TranslateDXLDynIdxScan(
 	// translate index condition list
 	List *index_cond = NIL;
 	List *index_orig_cond = NIL;
-	List *index_strategy_list = NIL;
-	List *index_subtype_list = NIL;
 
 	TranslateIndexConditions(
 		(*dyn_idx_only_scan_dxlnode)
@@ -4570,8 +4423,7 @@ CTranslatorDXLToPlStmt::TranslateDXLDynIdxScan(
 		dyn_index_scan_dxlop->GetDXLTableDescr(),
 		false,	// is_bitmap_index_probe
 		md_index, md_rel, output_context, &base_table_context,
-		ctxt_translation_prev_siblings, &index_cond, &index_orig_cond,
-		&index_strategy_list, &index_subtype_list);
+		ctxt_translation_prev_siblings, &index_cond, &index_orig_cond);
 
 
 	dyn_idx_only_scan->indexscan.indexqual = index_cond;
@@ -6621,14 +6473,11 @@ CTranslatorDXLToPlStmt::TranslateDXLBitmapIndexProbe(
 	CDXLNode *index_cond_list_dxlnode = (*bitmap_index_probe_dxlnode)[0];
 	List *index_cond = NIL;
 	List *index_orig_cond = NIL;
-	List *index_strategy_list = NIL;
-	List *index_subtype_list = NIL;
 
 	TranslateIndexConditions(
 		index_cond_list_dxlnode, table_descr, true /*is_bitmap_index_probe*/,
 		index, md_rel, output_context, base_table_context,
-		ctxt_translation_prev_siblings, &index_cond, &index_orig_cond,
-		&index_strategy_list, &index_subtype_list);
+		ctxt_translation_prev_siblings, &index_cond, &index_orig_cond);
 
 	bitmap_idx_scan->indexqual = index_cond;
 	bitmap_idx_scan->indexqualorig = index_orig_cond;

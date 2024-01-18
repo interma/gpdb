@@ -50,6 +50,7 @@
 #include "cdb/cdbsubselect.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbutil.h"
+#include "cdb/cdbpath.h"
 
 /* source-code-compatibility hacks for pull_varnos() API change */
 #define pull_varnos(a,b) pull_varnos_new(a,b)
@@ -122,6 +123,8 @@ static bool finalize_agg_primnode(Node *node, finalize_primnode_context *context
 
 extern	double global_work_mem(PlannerInfo *root);
 static bool contain_outer_selfref_walker(Node *node, Index *depth);
+
+static bool splan_is_initplan(List *plan_params, SubLinkType subLinkType);
 
 /*
  * Get the datatype/typmod/collation of the first column of the plan's output.
@@ -367,11 +370,19 @@ make_subplan(PlannerInfo *root, Query *orig_subquery,
 
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		config->gp_cte_sharing = IsSubqueryCorrelated(subquery) ||
+		/*
+		 * Disable CTE sharing in initplan.
+		 *
+		 * Such subLinkType below could become initplan,
+		 * so we shouldn't apply cte sharing scan inside them
+		 * and then back to normal scan.
+		 */
+		config->gp_cte_sharing = config->gp_cte_sharing ?
 				!(subLinkType == ROWCOMPARE_SUBLINK ||
 				 subLinkType == ARRAY_SUBLINK ||
 				 subLinkType == EXPR_SUBLINK ||
-				 subLinkType == EXISTS_SUBLINK);
+				 subLinkType == MULTIEXPR_SUBLINK ||
+				 subLinkType == EXISTS_SUBLINK) : config->gp_cte_sharing;
 	}
 	/*
 	 * Strictly speaking, the order of rows in a subquery doesn't matter.
@@ -428,9 +439,15 @@ make_subplan(PlannerInfo *root, Query *orig_subquery,
 	subroot->curSlice = palloc0(sizeof(PlanSlice));
 	subroot->curSlice->gangType = GANGTYPE_UNALLOCATED;
 
+	if (splan_is_initplan(plan_params, subLinkType))
+		unset_allow_append_initplan_for_function_scan();
+
 	plan = create_plan(subroot, best_path, subroot->curSlice);
 	/* Decorate the top node of the plan with a Flow node. */
 	plan->flow = cdbpathtoplan_create_flow(subroot, best_path->locus);
+
+	set_allow_append_initplan_for_function_scan();
+	Assert(get_allow_append_initplan_for_function_scan() == true);
 
 	/* And convert to SubPlan or InitPlan format. */
 	result = build_subplan(root, plan, subroot, plan_params,
@@ -3512,4 +3529,23 @@ SS_make_initplan_from_plan(PlannerInfo *root,
 	 */
 
 	/* NB PostgreSQL calculates subplan cost here, but GPDB does it elsewhere. */
+}
+
+
+bool
+splan_is_initplan(List *plan_params, SubLinkType subLinkType)
+{
+	/*
+	 * un-correlated or undirect correlated plans of EXISTS, EXPR, ARRAY,
+	 * ROWCOMPARE, or MULTIEXPR types can be used as initPlans.
+	 */
+	if (plan_params == NIL && (
+			subLinkType == EXISTS_SUBLINK ||
+			subLinkType == EXPR_SUBLINK ||
+			subLinkType == ARRAY_SUBLINK ||
+			subLinkType == ROWCOMPARE_SUBLINK ||
+			subLinkType == MULTIEXPR_SUBLINK
+	))
+		return true;
+	return false;
 }

@@ -2823,6 +2823,11 @@ create_recursiveunion_plan(PlannerInfo *root, RecursiveUnionPath *best_path)
 								best_path->distinctList,
 								numGroups);
 
+	/*
+	 * Check whether there is a motion above WorkTableScan
+	 */
+	checkMotionAboveWorkTableScan((Node *)rightplan, root);
+
 	copy_generic_path_info(&plan->plan, (Path *) best_path);
 
 	return plan;
@@ -8222,8 +8227,12 @@ append_initplan_for_function_scan(PlannerInfo *root, Path *best_path, Plan *plan
 	if (Gp_role != GP_ROLE_DISPATCH)
 		return;
 
+	/* Current function scan is already in an initplan, do nothing. */
+	if (!get_allow_append_initplan_for_function_scan())
+		return;
+
 	/*
-	 * If INITPLAN function is executed on QD, there is no 
+	 * If INITPLAN function is executed on QD, there is no
 	 * need to add additional initplan to run this function.
 	 * Recall that the reason to introduce INITPLAN function
 	 * is that function runing on QE can not do dispatch.
