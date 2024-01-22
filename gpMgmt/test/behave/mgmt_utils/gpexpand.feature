@@ -685,3 +685,5 @@ Feature: expand the cluster by adding more segments
         And table "test_good_2" should be marked as expanded
         And table "test_already_expanded" should be marked as expanded
         And table "test_broken" should not be marked as expanded
+
+
