@@ -4385,7 +4385,9 @@ def set_ic_proxy_and_address(context, new_addr):
     with closing(dbconn.connect(dbconn.DbURL(), unsetSearchPath=False)) as conn:
         # get segment_configuration
         sql = "SELECT dbid, content, address, port FROM gp_segment_configuration order by dbid"
-        rows = dbconn.query(conn, sql).fetchall()
+        cursor = dbconn.execSQL(conn, sql)
+        rows = cursor.fetchall()
+        cursor.close()
         if len(rows) <= 0:
             raise Exception("Found no entries in gp_segment_configuration table")
 

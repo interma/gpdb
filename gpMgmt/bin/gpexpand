@@ -2037,12 +2037,17 @@ class gpexpand:
         And prompt user to set a proper value via gpconfig before expansion.
         """
 
-        # get GUC value
-        sql = "show gp_interconnect_proxy_addresses;"
         conn = dbconn.connect(_gp_expand.dburl, encoding='UTF8')
-        icproxy_addresses_string = dbconn.queryRow(conn, sql)[0].strip()
+        # get GUC value: gp_interconnect_proxy_addresses
+        sql = "show gp_interconnect_proxy_addresses;"
+        cursor = dbconn.execSQL(conn, sql)
+        icproxy_addresses_string = cursor.fetchone()[0].strip()
+        cursor.close()
+        # get GUC value: gp_interconnect_type
         sql = "show gp_interconnect_type;"
-        ic_type = dbconn.queryRow(conn, sql)[0].strip()
+        cursor = dbconn.execSQL(conn, sql)
+        ic_type = cursor.fetchone()[0].strip()
+        cursor.close()
         conn.close()
 
         # check if newly added dbid exists in gp_interconnect_proxy_addresses
@@ -2633,8 +2638,8 @@ def main(options, args, parser):
         elif gpexpand_db_status is None and gpexpand_file_status is None and options.filename:
             _gp_expand.validate_heap_checksums()
             newSegList = _gp_expand.read_input_files()
-            _gp_expand.validate_icproxy_addr(newSegList)
             _gp_expand.addNewSegments(newSegList)
+            _gp_expand.validate_icproxy_addr(newSegList)
             newTableSpaceInfo = _gp_expand.read_tablespace_file()
             _gp_expand.sync_packages()
             _gp_expand.start_prepare()

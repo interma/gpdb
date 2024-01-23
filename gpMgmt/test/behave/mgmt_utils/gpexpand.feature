@@ -263,7 +263,6 @@ Feature: expand the cluster by adding more segments
         And the user runs command "rm -rf /data/gpdata/gpexpand/*"
         And a temporary directory under "/data/gpdata/gpexpand/expandedData" to expand into
         And a cluster is created with no mirrors on "cdw" and "sdw1"
-        And the coordinator pid has been saved
         And database "gptest" exists
         And there are no gpexpand_inputfiles
         And the cluster is running in IC proxy mode
@@ -281,7 +280,6 @@ Feature: expand the cluster by adding more segments
         And the user runs command "rm -rf /data/gpdata/gpexpand/*"
         And a temporary directory under "/data/gpdata/gpexpand/expandedData" to expand into
         And a cluster is created with no mirrors on "cdw" and "sdw1"
-        And the coordinator pid has been saved
         And database "gptest" exists
         And there are no gpexpand_inputfiles
         And the cluster is running in IC proxy mode with new proxy address 4:2:cdw:16502
@@ -299,7 +297,6 @@ Feature: expand the cluster by adding more segments
         And the user runs command "rm -rf /data/gpdata/gpexpand/*"
         And a temporary directory under "/data/gpdata/gpexpand/expandedData" to expand into
         And a cluster is created with no mirrors on "cdw" and "sdw1"
-        And the coordinator pid has been saved
         And database "gptest" exists
         And there are no gpexpand_inputfiles
         And the cluster is running in IC proxy mode with new proxy address 4:2:sdw1:16502
