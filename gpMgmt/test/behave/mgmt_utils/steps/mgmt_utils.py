@@ -4378,9 +4378,9 @@ def verify_elements_in_file(filename, elements):
 
         return True
 
-def set_ic_proxy_and_address(context, new_addr):
+def set_ic_proxy_and_address(context, new_addr, proxy_mode):
     """
-        set the proper proxy addresses and enable proxy mode
+        set the proper proxy addresses and enable proxy mode (when proxy_mode == True)
     """
     with closing(dbconn.connect(dbconn.DbURL(), unsetSearchPath=False)) as conn:
         # get segment_configuration
@@ -4413,10 +4413,12 @@ def set_ic_proxy_and_address(context, new_addr):
             raise Exception("cannot run %s: %s, stdout: %s" % (cmd, context.error_message, context.stdout_message))
 
         # set interconnect_type to proxy
-        cmd = "gpconfig -c gp_interconnect_type -v proxy"
-        run_command(context, cmd)
-        if context.ret_code != 0:
-            raise Exception("cannot run %s: %s, stdout: %s" % (cmd, context.error_message, context.stdout_message))
+        if proxy_mode:
+            cmd = "gpconfig -c gp_interconnect_type -v proxy"
+            run_command(context, cmd)
+            if context.ret_code != 0:
+                raise Exception("cannot run %s: %s, stdout: %s" % (cmd, context.error_message, context.stdout_message))
+
         # let all config take effects
         cmd = "gpstop -u"
         run_command(context, cmd)
@@ -4425,8 +4427,12 @@ def set_ic_proxy_and_address(context, new_addr):
 
 @given(u'the cluster is running in IC proxy mode')
 def step_impl(context):
-    set_ic_proxy_and_address(context, "")
+    set_ic_proxy_and_address(context, "", True)
+
+@given(u'the cluster is not running in IC proxy mode, but proxy_addresses has been set')
+def step_impl(context):
+    set_ic_proxy_and_address(context, "", False)
 
 @given(u'the cluster is running in IC proxy mode with new proxy address {address}')
 def step_impl(context, address):
-    set_ic_proxy_and_address(context, address)
+    set_ic_proxy_and_address(context, address, True)
