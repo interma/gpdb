@@ -2,7 +2,8 @@ subdir=src/backend/utils
 top_builddir=../../../..
 include $(top_builddir)/src/Makefile.global
 
-TARGETS=session_state
+TARGETS=session_state \
+		tuplesort
 
 include $(top_srcdir)/src/backend/mock.mk
 
@@ -12,5 +13,11 @@ session_state.t: \
 	$(MOCK_DIR)/backend/utils/error/assert_mock.o \
 	$(MOCK_DIR)/backend/utils/error/elog_mock.o \
 	$(MOCK_DIR)/backend/utils/mmgr/runaway_cleaner_mock.o \
+	$(MOCK_DIR)/backend/access/hash/hash_mock.o \
+	$(MOCK_DIR)/backend/utils/fmgr/fmgr_mock.o \
+
+# for the "multiple definition of objects" error
+tuplesort.t: EXCL_OBJS+=src/backend/utils/sort/tuplesort.o
+tuplesort.t: \
 	$(MOCK_DIR)/backend/access/hash/hash_mock.o \
 	$(MOCK_DIR)/backend/utils/fmgr/fmgr_mock.o \
