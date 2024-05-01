@@ -17,6 +17,7 @@
 #include "storage/s_lock.h"
 #endif
 #include "nodes/plannodes.h"
+struct pg_result;
 
 struct Gang;
 
@@ -359,5 +360,8 @@ extern DtxRecoveryEvent GetDtxRecoveryEvent(void);
 extern void SetDtxRecoveryEvent(DtxRecoveryEvent event);
 extern void DtxRecoveryMain(Datum main_arg);
 extern bool DtxRecoveryStartRule(Datum main_arg);
+
+extern void sendWaitGxidsToQD(List *waitGxids);
+extern void gatherWaitedGxids(int resultCount, struct pg_result **results);
 
 #endif   /* CDBTM_H */

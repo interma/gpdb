@@ -49,6 +49,7 @@
 #include "storage/smgr.h"
 #include "utils/builtins.h"
 #include "utils/rel.h"
+#include "cdb/cdbvars.h"
 
 
 static void reform_and_rewrite_tuple(HeapTuple tuple,
@@ -360,6 +361,59 @@ heapam_tuple_update(Relation relation, ItemPointer otid, TupleTableSlot *slot,
 	 * If it's a HOT update, we mustn't insert new index entries.
 	 */
 	*update_indexes = result == TM_Ok && !HeapTupleIsHeapOnly(tuple);
+
+
+	/**
+	 * @interma abnormal scenario1:
+	 * 	the tuple (tupleid) is TM_Updated and
+	 * 	corresponding gxid of its xmax is considered as in-progress via DistributedSnapshot
+	 */
+	if (result == TM_Updated)
+	{
+		bool setDistributedSnapshotIgnore;
+
+		// get tuple header
+		BlockNumber block = ItemPointerGetBlockNumber(otid);
+		Buffer buffer = ReadBuffer(relation, block);
+		Page page = BufferGetPage(buffer);
+		ItemId lp = PageGetItemId(page, ItemPointerGetOffsetNumber(otid));
+
+		LockBuffer(buffer, BUFFER_LOCK_EXCLUSIVE);
+		HeapTupleHeader theader = (HeapTupleHeader) PageGetItem(page, lp);
+		UnlockReleaseBuffer(buffer);
+
+		// check xmax via DistributedSnapshot
+		TransactionId updated_xmax = HeapTupleHeaderGetUpdateXid(theader);
+		XidInMVCCSnapshotCheckResult snapshotCheckResult = 
+			XidInMVCCSnapshot(updated_xmax, snapshot, false, &setDistributedSnapshotIgnore);
+
+		if (snapshotCheckResult == XID_IN_SNAPSHOT)
+		{
+			DistributedTransactionId distribXid = -1;
+			// get the gxid
+			// approach1
+			//LocalDistribXactCache_CommittedFind(updated_xmax, &distribXid);
+			// approach2: from xionggang's PR
+			distribXid = LocalXidGetDistributedXid(updated_xmax);
+
+			// display gxid
+			elog(INFO, "interma abnormal: found tuple(%d, %d) committed locally, but its global txn[%ld] is still in progress.",
+					otid->ip_blkid.bi_lo, otid->ip_posid, distribXid);
+
+			// put it into waitGxids, (and force QD to wait it later)
+			if (gp_enable_global_deadlock_detector && Gp_role == GP_ROLE_EXECUTE)
+			{
+				MemoryContext oldContext;
+				if (distribXid != InvalidDistributedTransactionId)
+				{
+					oldContext = MemoryContextSwitchTo(TopMemoryContext);
+					MyTmGxactLocal->waitGxids = lappend_int(MyTmGxactLocal->waitGxids, distribXid);
+					MemoryContextSwitchTo(oldContext);
+				}
+			}
+		}
+	}
+	/* other abnormal scenarios? */
 
 	if (shouldFree)
 		pfree(tuple);

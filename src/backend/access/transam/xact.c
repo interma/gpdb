@@ -3871,6 +3871,15 @@ CommitTransactionCommand(void)
 	if (s->chain)
 		SaveTransactionCharacteristics();
 
+
+	/* @interma phase1: send WaitedGxids to QD at the end of a TransactionCommand */
+	if (Gp_role == GP_ROLE_EXECUTE)
+	{
+		sendWaitGxidsToQD(MyTmGxactLocal->waitGxids);
+		list_free(MyTmGxactLocal->waitGxids);
+		MyTmGxactLocal->waitGxids = NULL;
+	}
+
 	switch (s->blockState)
 	{
 			/*

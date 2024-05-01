@@ -106,6 +106,8 @@
 #include "utils/session_state.h"
 #include "utils/vmem_tracker.h"
 
+#include "storage/lmgr.h"
+
 /* ----------------
  *		global variables
  * ----------------
@@ -1930,6 +1932,19 @@ exec_simple_query(const char *query_string)
 		receiver->rDestroy(receiver);
 
 		PortalDrop(portal, false);
+
+		/* @interma phase3: wait all WaitedGxids at the end of current TransactionCommand */
+		ListCell *l;
+		foreach(l, MyTmGxactLocal->waitGxids)
+		{
+			elog(INFO, "interma: QD is waiting the txn[%d] to finish.", lfirst_int(l));
+			GxactLockTableWait(lfirst_int(l));
+		}
+		if (MyTmGxactLocal->waitGxids != NULL)
+		{
+			list_free(MyTmGxactLocal->waitGxids);
+			MyTmGxactLocal->waitGxids = NULL;
+		}
 
 		if (lnext(parsetree_item) == NULL)
 		{

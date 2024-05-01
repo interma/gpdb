@@ -132,7 +132,7 @@ static void setCurrentDtxState(DtxState state);
 static bool isDtxQueryDispatcher(void);
 static void performDtxProtocolCommitPrepared(const char *gid, bool raiseErrorIfNotFound);
 static void performDtxProtocolAbortPrepared(const char *gid, bool raiseErrorIfNotFound);
-static void sendWaitGxidsToQD(List *waitGxids);
+// static void sendWaitGxidsToQD(List *waitGxids);
 
 extern void GpDropTempTables(void);
 
@@ -1222,6 +1222,63 @@ currentDtxDispatchProtocolCommand(DtxProtocolCommand dtxProtocolCommand, bool ra
 										MyTmGxactLocal->dtxSegments, NULL, 0);
 }
 
+
+void gatherWaitedGxids(int resultCount, struct pg_result **results)
+{
+	int	i;
+	MemoryContext oldContext;
+	int *waitGxids = NULL;
+	int totalWaits = 0;
+
+	/* gather all the waited gxids from segments and remove the duplicates */
+	for (i = 0; i < resultCount; i++)
+		totalWaits += results[i]->nWaits;
+
+	if (totalWaits > 0)
+		waitGxids = palloc(sizeof(int) * totalWaits);
+
+	totalWaits = 0;
+	for (i = 0; i < resultCount; i++)
+	{
+		struct pg_result *result = results[i];
+
+		if (result->nWaits > 0)
+		{
+			memcpy(&waitGxids[totalWaits], result->waitGxids, sizeof(int) * result->nWaits);
+			totalWaits += result->nWaits;
+		}
+		PQclear(result);
+	}
+
+	if (totalWaits > 0)
+	{
+		int lastRepeat = -1;
+		if (MyTmGxactLocal->waitGxids)
+		{
+			list_free(MyTmGxactLocal->waitGxids);
+			MyTmGxactLocal->waitGxids = NULL;
+		}
+
+		qsort(waitGxids, totalWaits, sizeof(int), compare_int);
+
+		oldContext = MemoryContextSwitchTo(TopTransactionContext);
+		for (i = 0; i < totalWaits; i++)
+		{
+			if (waitGxids[i] == lastRepeat)
+				continue;
+			MyTmGxactLocal->waitGxids = lappend_int(MyTmGxactLocal->waitGxids, waitGxids[i]);
+			lastRepeat = waitGxids[i];
+		}
+		MemoryContextSwitchTo(oldContext);
+	}
+
+	if (waitGxids)
+		pfree(waitGxids);
+
+	if (results)
+		pfree(results);
+}
+
 bool
 doDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 							 char *gid,
@@ -1237,9 +1294,6 @@ doDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 	char	   *dtxProtocolCommandStr = 0;
 
 	struct pg_result **results;
-	MemoryContext oldContext;
-	int *waitGxids = NULL;
-	int totalWaits = 0;
 
 	if (!dtxSegments)
 		return true;
@@ -1320,54 +1374,7 @@ doDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 		}
 	}
 
-	/* gather all the waited gxids from segments and remove the duplicates */
-	for (i = 0; i < resultCount; i++)
-		totalWaits += results[i]->nWaits;
-
-	if (totalWaits > 0)
-		waitGxids = palloc(sizeof(int) * totalWaits);
-
-	totalWaits = 0;
-	for (i = 0; i < resultCount; i++)
-	{
-		struct pg_result *result = results[i];
-
-		if (result->nWaits > 0)
-		{
-			memcpy(&waitGxids[totalWaits], result->waitGxids, sizeof(int) * result->nWaits);
-			totalWaits += result->nWaits;
-		}
-		PQclear(result);
-	}
-
-	if (totalWaits > 0)
-	{
-		int lastRepeat = -1;
-		if (MyTmGxactLocal->waitGxids)
-		{
-			list_free(MyTmGxactLocal->waitGxids);
-			MyTmGxactLocal->waitGxids = NULL;
-		}
-
-		qsort(waitGxids, totalWaits, sizeof(int), compare_int);
-
-		oldContext = MemoryContextSwitchTo(TopTransactionContext);
-		for (i = 0; i < totalWaits; i++)
-		{
-			if (waitGxids[i] == lastRepeat)
-				continue;
-			MyTmGxactLocal->waitGxids = lappend_int(MyTmGxactLocal->waitGxids, waitGxids[i]);
-			lastRepeat = waitGxids[i];
-		}
-		MemoryContextSwitchTo(oldContext);
-	}
-
-	if (waitGxids)
-		pfree(waitGxids);
-
-	if (results)
-		pfree(results);
-
+	gatherWaitedGxids(resultCount, results);
 	return (numOfFailed == 0);
 }
 
@@ -2039,7 +2046,7 @@ performDtxProtocolPrepare(const char *gid)
 	setDistributedTransactionContext(DTX_CONTEXT_QE_PREPARED);
 }
 
-static void
+void
 sendWaitGxidsToQD(List *waitGxids)
 {
 	ListCell *lc;
