@@ -59,6 +59,8 @@ DistributedSnapshotWithLocalMapping_CommittedTest(
 	 * through our cache in distributed snapshot looking for a possible
 	 * corresponding local xid only if it has value in checking.
 	 */
+
+	/* removed by zhenglong's commit
 	if (dslm->currentLocalXidsCount > 0)
 	{
 		Assert(TransactionIdIsNormal(dslm->minCachedLocalXid));
@@ -83,6 +85,7 @@ DistributedSnapshotWithLocalMapping_CommittedTest(
 			}
 		}
 	}
+	*/
 
 	/*
 	 * Is this local xid in a process-local cache we maintain?
@@ -150,6 +153,7 @@ DistributedSnapshotWithLocalMapping_CommittedTest(
 	 * Any xid >= xmax is in-progress, distributed xmax points to the
 	 * latestCompletedGxid + 1.
 	 */
+	/* removed by zhenglong's commit
 	if (distribXid >= ds->xmax)
 	{
 		elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),
@@ -158,6 +162,7 @@ DistributedSnapshotWithLocalMapping_CommittedTest(
 
 		return DISTRIBUTEDSNAPSHOT_COMMITTED_INPROGRESS;
 	}
+	*/
 
 	for (i = 0; i < ds->count; i++)
 	{

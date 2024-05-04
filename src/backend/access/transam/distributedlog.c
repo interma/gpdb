@@ -501,11 +501,13 @@ DistributedLog_CommittedCheck(
 	if (oldestXmin == InvalidTransactionId)
 		elog(PANIC, "DistributedLog's OldestXmin not initialized yet");
 
+	/* removed by zhenglong's commit
 	if (TransactionIdPrecedes(localXid, oldestXmin))
 	{
 		*distribXid = 0;
 		return false;
 	}
+	*/
 
 	LWLockAcquire(DistributedLogTruncateLock, LW_SHARED);
 	slotno = SimpleLruReadPage_ReadOnly(DistributedLogCtl, page, localXid);
