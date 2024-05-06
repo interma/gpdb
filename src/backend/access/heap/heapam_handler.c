@@ -51,6 +51,8 @@
 #include "utils/rel.h"
 #include "cdb/cdbvars.h"
 
+#include "libpq/pqformat.h"
+#include "libpq/libpq.h"
 
 static void reform_and_rewrite_tuple(HeapTuple tuple,
 									 Relation OldHeap, Relation NewHeap,
@@ -364,7 +366,8 @@ heapam_tuple_update(Relation relation, ItemPointer otid, TupleTableSlot *slot,
 
 
 	/**
-	 * @interma abnormal scenario1:
+	 * @interma phase1, check the abnormal scenarios.
+	 * scenario1:
 	 * 	the tuple (tupleid) is TM_Updated and
 	 * 	corresponding gxid of its xmax is considered as in-progress via DistributedSnapshot
 	 */
@@ -390,15 +393,14 @@ heapam_tuple_update(Relation relation, ItemPointer otid, TupleTableSlot *slot,
 		if (snapshotCheckResult == XID_IN_SNAPSHOT)
 		{
 			DistributedTransactionId distribXid = -1;
-			// get the gxid
+			// get the corresponding gxid
 			// approach1
 			//LocalDistribXactCache_CommittedFind(updated_xmax, &distribXid);
 			// approach2: from xionggang's PR
 			distribXid = LocalXidGetDistributedXid(updated_xmax);
 
-			// display gxid
-			elog(INFO, "interma abnormal: found tuple(%d, %d) committed locally, but its global txn[%ld] is still in progress.",
-					otid->ip_blkid.bi_lo, otid->ip_posid, distribXid);
+			elog(NOTICE, "Abnormal tuple, sess%dcmd%d: found tuple(%d, %d) committed locally, but its global txn[%d][%ld] is still in progress.",
+					gp_session_id, gp_command_count, otid->ip_blkid.bi_lo, otid->ip_posid, updated_xmax, distribXid);
 
 			// put it into waitGxids, (and force QD to wait it later)
 			if (gp_enable_global_deadlock_detector && Gp_role == GP_ROLE_EXECUTE)

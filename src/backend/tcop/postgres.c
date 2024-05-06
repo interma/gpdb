@@ -1933,19 +1933,6 @@ exec_simple_query(const char *query_string)
 
 		PortalDrop(portal, false);
 
-		/* @interma phase3: wait all WaitedGxids at the end of current TransactionCommand */
-		ListCell *l;
-		foreach(l, MyTmGxactLocal->waitGxids)
-		{
-			elog(INFO, "interma: QD is waiting the txn[%d] to finish.", lfirst_int(l));
-			GxactLockTableWait(lfirst_int(l));
-		}
-		if (MyTmGxactLocal->waitGxids != NULL)
-		{
-			list_free(MyTmGxactLocal->waitGxids);
-			MyTmGxactLocal->waitGxids = NULL;
-		}
-
 		if (lnext(parsetree_item) == NULL)
 		{
 			/*

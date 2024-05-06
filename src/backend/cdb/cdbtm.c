@@ -1272,6 +1272,11 @@ void gatherWaitedGxids(int resultCount, struct pg_result **results)
 		MemoryContextSwitchTo(oldContext);
 	}
 
+	int len = list_length(MyTmGxactLocal->waitGxids);
+	if (len > 0)
+		elog(NOTICE, "interma sess%dcmd%d gathered WaitGxids len[%d].",
+			gp_session_id, gp_command_count, len);
+
 	if (waitGxids)
 		pfree(waitGxids);
 
@@ -2063,6 +2068,9 @@ sendWaitGxidsToQD(List *waitGxids)
 		pq_sendint(&buf, lfirst_int(lc), 4);
 	}
 	pq_endmessage(&buf);
+
+	elog(NOTICE, "interma sess%dcmd%d sent WaitGxids len[%d].",
+			gp_session_id, gp_command_count, len);
 }
 /**
  * On the QE, run the Commit one-phase operation.
@@ -2096,7 +2104,7 @@ performDtxProtocolCommitOnePhase(const char *gid)
 	finishDistributedTransactionContext("performDtxProtocolCommitOnePhase -- Commit onephase", false);
 	MyProc->localDistribXactData.state = LOCALDISTRIBXACT_STATE_NONE;
 
-	sendWaitGxidsToQD(waitGxids);
+	// sendWaitGxidsToQD(waitGxids);
 }
 
 /**
@@ -2134,7 +2142,7 @@ performDtxProtocolCommitPrepared(const char *gid, bool raiseErrorIfNotFound)
 	 */
 	CommitTransactionCommand();
 
-	sendWaitGxidsToQD(waitGxids);
+	// sendWaitGxidsToQD(waitGxids);
 
 	finishDistributedTransactionContext("performDtxProtocolCommitPrepared -- Commit Prepared", false);
 	SIMPLE_FAULT_INJECTOR("finish_commit_prepared");

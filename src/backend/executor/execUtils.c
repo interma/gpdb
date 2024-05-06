@@ -1577,10 +1577,25 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 		/* sum up rejected rows if any (single row error handling only) */
 		cdbdisp_sumRejectedRows(pr);
 
-		/* @interma phase2: gather all WaitedGxids which sent in current TransactionCommand */
+		/* @interma phase3: gather WaitedGxids from QEs */
 		CdbPgResults cdb_pgresults = {NULL, 0};
 		cdbdisp_returnResults(pr, &cdb_pgresults);
 		gatherWaitedGxids(cdb_pgresults.numResults, cdb_pgresults.pg_results);
+
+		/* and wait corresponding Txn */
+		ListCell *l;
+		foreach(l, MyTmGxactLocal->waitGxids)
+		{
+			elog(NOTICE, "interma: QD sess%dcmd%d is waiting other global txn[%d] to finish.",
+				gp_session_id, gp_command_count, lfirst_int(l));
+			GxactLockTableWait(lfirst_int(l));
+		}
+		/* clean it */
+		if (MyTmGxactLocal->waitGxids != NULL)
+		{
+			list_free(MyTmGxactLocal->waitGxids);
+			MyTmGxactLocal->waitGxids = NULL;
+		}
 
 		/*
 		 * Check and free the results of all gangs. If any QE had an

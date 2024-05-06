@@ -3872,7 +3872,7 @@ CommitTransactionCommand(void)
 		SaveTransactionCharacteristics();
 
 
-	/* @interma phase1: send WaitedGxids to QD at the end of a TransactionCommand */
+	/* @interma phase2: send QE's WaitedGxids to QD */
 	if (Gp_role == GP_ROLE_EXECUTE)
 	{
 		sendWaitGxidsToQD(MyTmGxactLocal->waitGxids);
